@@ -8,6 +8,7 @@ export const IpcChannels = {
   getSettings: 'app:get-settings',
   updateSettings: 'app:update-settings',
   chooseDestinationFolder: 'dialog:choose-destination-folder',
+  chooseTextFile: 'dialog:choose-text-file',
   readClipboardText: 'clipboard:read-text',
   revealInFolder: 'shell:reveal-in-folder',
   startDownload: 'download:start',
@@ -23,6 +24,7 @@ export const IpcChannels = {
   createQueue: 'queue:create',
   deleteQueue: 'queue:delete',
   addQueueDownload: 'queue:addDownload',
+  addQueueDownloads: 'queue:addDownloads',
   removeQueueDownload: 'queue:removeDownload',
   pauseQueue: 'queue:pauseQueue',
   resumeQueue: 'queue:resumeQueue',
@@ -56,5 +58,12 @@ export const IpcChannels = {
   removeQueueBandwidthLimit: 'bandwidth:removeQueueLimit',
   getBandwidthUsage: 'bandwidth:getUsage',
   checkBandwidthNow: 'bandwidth:checkNow',
-  bandwidthUpdated: 'bandwidth:onUpdate'
+  bandwidthUpdated: 'bandwidth:onUpdate',
+  createCategoryRule: 'categoryRule:create',
+  updateCategoryRule: 'categoryRule:update',
+  getCategoryRule: 'categoryRule:get',
+  getCategoryRules: 'categoryRule:getAll',
+  removeCategoryRule: 'categoryRule:remove',
+  reorderCategoryRules: 'categoryRule:reorder',
+  categoryRulesUpdated: 'categoryRule:onUpdate'
 } as const

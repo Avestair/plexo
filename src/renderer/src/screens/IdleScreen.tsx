@@ -1,3 +1,4 @@
+import { matchCategoryRule } from '@shared/categoryRules'
 import type { ProbeResult } from '@shared/types'
 import { cn } from 'cn'
 import { AlertTriangle, ClipboardPaste, Info } from 'lucide-react'
@@ -69,6 +70,8 @@ export function IdleScreen(): React.JSX.Element {
   const setUrl = useAppStore((store) => store.setDraftUrl)
   const destinationDir = useAppStore((store) => store.destinationDir)
   const setDestinationDir = useAppStore((store) => store.setDestinationDir)
+  const categoryRules = useAppStore((store) => store.categoryRules)
+  const queues = useAppStore((store) => store.queues)
 
   const [probe, setProbe] = useState<ProbeState>({ status: 'idle' })
   // Tracks deselections rather than selections, so a newly-detected interface starts selected.
@@ -78,14 +81,24 @@ export function IdleScreen(): React.JSX.Element {
   const [fileNameOverride, setFileNameOverride] = useState<string | null>(null)
   // Auto unless the user picks a count for this download; not remembered for the next one.
   const [streamsChoice, setStreamsChoice] = useState<StreamsChoice>('auto')
+  // A category-rule match is a suggestion, never forced — dismissible per-URL, and the ad-hoc
+  // Start flow below works exactly as it always has whether or not the user acts on it. With no
+  // rules configured (the default), matchCategoryRule always returns null and none of this ever
+  // shows: a user who's never touched rules sees zero behavior change.
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false)
+  const [addedToQueueName, setAddedToQueueName] = useState<string | null>(null)
 
   const probeRequestId = useRef(0)
 
   useEffect(() => {
+    // A dismissed suggestion is per-URL — editing the field again should offer it fresh rather
+    // than staying silenced from a previous link.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSuggestionDismissed(false)
+
     const trimmed = url.trim()
     if (!trimmed) {
       // Resetting derived probe state when its trigger (the URL) is cleared.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setProbe({ status: 'idle' })
       setFileNameOverride(null)
       return
@@ -114,6 +127,28 @@ export function IdleScreen(): React.JSX.Element {
   // One request has to carry the whole file: either the server can't serve parts of it, or it
   // didn't say how big it is, so there's no telling where the parts would be.
   const sizeUnknown = isSingleStreamOnly && ready.supportsRanges
+
+  const trimmedUrl = url.trim()
+  const matchedQueueId = trimmedUrl ? matchCategoryRule(trimmedUrl, categoryRules) : null
+  const matchedQueue = matchedQueueId
+    ? (queues.find((queue) => queue.id === matchedQueueId) ?? null)
+    : null
+
+  const handleAddToMatchedQueue = async (): Promise<void> => {
+    if (!matchedQueue) return
+    try {
+      await window.plexo.addQueueDownload(matchedQueue.id, trimmedUrl)
+      const queueName = matchedQueue.name
+      setUrl('')
+      setAddedToQueueName(queueName)
+      setTimeout(
+        () => setAddedToQueueName((current) => (current === queueName ? null : current)),
+        3000
+      )
+    } catch {
+      // Leave the ad-hoc flow in place — the URL stays filled in, Start is still right there.
+    }
+  }
 
   const detectedIds = interfaces.map((iface) => iface.id)
   const enabledIds = detectedIds.filter((id) => !deselectedInterfaceIds.includes(id))
@@ -258,6 +293,40 @@ export function IdleScreen(): React.JSX.Element {
         </div>
 
         {probe.status === 'error' && <ErrorAlert message={probe.message} />}
+
+        {addedToQueueName && (
+          <Alert className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 py-1.5">
+            <AlertDescription className="text-xs text-emerald-800 dark:text-emerald-200/90">
+              Added to {addedToQueueName}.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {matchedQueue && !suggestionDismissed && (
+          <div className="flex items-center gap-2.5 rounded-[9px] border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-blue-700 dark:text-blue-300">
+            <Info className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <div className="min-w-0 flex-1 text-xs leading-relaxed text-blue-800 dark:text-blue-200/90">
+              Matches a category rule — usually goes to{' '}
+              <span className="font-medium">{matchedQueue.name}</span>.
+            </div>
+            <Button
+              type="button"
+              size="xs"
+              variant="secondary"
+              onClick={() => void handleAddToMatchedQueue()}
+            >
+              Add to {matchedQueue.name}
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => setSuggestionDismissed(true)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
 
         {isSingleStreamOnly && (
           <InfoAlert

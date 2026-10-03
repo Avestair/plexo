@@ -6,6 +6,7 @@ import { SystemActionConfirmDialog } from './components/SystemActionConfirmDialo
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useBandwidth } from './hooks/useBandwidth'
+import { useCategoryRules } from './hooks/useCategoryRules'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
 import { useNetworkEvents } from './hooks/useNetworks'
 import { useQueues } from './hooks/useQueues'
@@ -79,6 +80,7 @@ function App(): React.JSX.Element {
   useSchedules()
   useSystemActions()
   useBandwidth()
+  useCategoryRules()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)

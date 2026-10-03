@@ -1,6 +1,7 @@
 import { applyDownloadUpdate } from '@shared/downloadUpdate'
 import type {
   AppSettings,
+  CategoryRule,
   DownloadState,
   DownloadUpdate,
   NetworkInterfaceInfo,
@@ -79,6 +80,9 @@ interface AppStore {
    * the same as AppSettings fields that aren't part of InitialState. */
   bandwidthUsage: QueueBandwidthUsage[]
 
+  /** Every category rule, pushed whole each time any of them changes (see useCategoryRules). */
+  categoryRules: CategoryRule[]
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -99,6 +103,7 @@ interface AppStore {
    * clobber a countdown's live push that arrived first (see useSystemActions). */
   receiveSystemActionConfig: (actions: QueueAction[], log: SystemActionLogEntry[]) => void
   receiveBandwidthUsage: (usage: QueueBandwidthUsage[]) => void
+  receiveCategoryRulesUpdate: (rules: CategoryRule[]) => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -137,6 +142,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   systemActionLog: [],
   pendingSystemActions: [],
   bandwidthUsage: [],
+  categoryRules: [],
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -253,5 +259,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }),
   receiveSystemActionConfig: (systemActions, systemActionLog) =>
     set({ systemActions, systemActionLog }),
-  receiveBandwidthUsage: (bandwidthUsage) => set({ bandwidthUsage })
+  receiveBandwidthUsage: (bandwidthUsage) => set({ bandwidthUsage }),
+  receiveCategoryRulesUpdate: (categoryRules) => set({ categoryRules })
 }))

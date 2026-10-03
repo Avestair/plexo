@@ -1,5 +1,7 @@
 import type {
   AppSettings,
+  BatchAddResult,
+  CategoryRule,
   DownloadUpdate,
   NetworkInterfaceInfo,
   ProbeResult,
@@ -13,6 +15,11 @@ import type {
   SystemActionLogEntry,
   UpdateInfo
 } from './types'
+
+/** Shaped here (not re-exported from main/queue/categoryRules.ts) so this file — shared by the
+ * renderer and preload — never has to resolve a main-process module just for its types. */
+type CategoryRuleInput = Omit<CategoryRule, 'id' | 'order'>
+type CategoryRulePatch = Partial<Omit<CategoryRule, 'id'>>
 
 /** 'windows'/'macos'/'linux'/'other' — process.platform mapped to what the renderer actually
  * needs to show (platform-appropriate labels/warnings for sleep/hibernate/shutdown), rather than
@@ -32,6 +39,11 @@ export interface IpcContract {
   updateSettings: { args: [patch: AppSettings]; result: void }
   probeUrl: { args: [url: string]; result: ProbeResult }
   chooseDestinationFolder: { args: [defaultPath: string]; result: string | null }
+  /** Picks a local text file and returns its contents (UTF-8), or null if cancelled or
+   * unreadable — combined into one round trip since the renderer has no fs access of its own to
+   * follow up a bare path with (unlike chooseDestinationFolder, where the path itself is what's
+   * wanted). */
+  chooseTextFile: { args: []; result: string | null }
   readClipboardText: { args: []; result: string }
   revealInFolder: { args: [filePath: string]; result: void }
   startDownload: { args: [request: StartDownloadRequest]; result: string }
@@ -45,6 +57,9 @@ export interface IpcContract {
   createQueue: { args: [name: string, description?: string]; result: Queue }
   deleteQueue: { args: [queueId: string]; result: void }
   addQueueDownload: { args: [queueId: string, url: string]; result: QueueItem }
+  /** Validates and dedupes `urls` (see QueueManager.addDownloads for the exact policy) and adds
+   * every survivor in one persisted write. */
+  addQueueDownloads: { args: [queueId: string, urls: string[]]; result: BatchAddResult }
   removeQueueDownload: { args: [queueId: string, itemId: string]; result: void }
   pauseQueue: { args: [queueId: string]; result: void }
   resumeQueue: { args: [queueId: string]; result: void }
@@ -84,4 +99,10 @@ export interface IpcContract {
   removeQueueBandwidthLimit: { args: [queueId: string]; result: void }
   getBandwidthUsage: { args: []; result: QueueBandwidthUsage[] }
   checkBandwidthNow: { args: []; result: void }
+  createCategoryRule: { args: [input: CategoryRuleInput]; result: CategoryRule }
+  updateCategoryRule: { args: [id: string, patch: CategoryRulePatch]; result: CategoryRule | null }
+  getCategoryRule: { args: [id: string]; result: CategoryRule | null }
+  getCategoryRules: { args: []; result: CategoryRule[] }
+  removeCategoryRule: { args: [id: string]; result: void }
+  reorderCategoryRules: { args: [ids: string[]]; result: void }
 }

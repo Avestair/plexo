@@ -1,5 +1,6 @@
 import type {
   BandwidthResetSchedule,
+  BatchAddResult,
   QueueAction,
   QueueBandwidthSettings,
   QueueBandwidthUsage,
@@ -7,12 +8,22 @@ import type {
   QueueItemStatus,
   SystemAction
 } from '@shared/types'
-import { ArrowLeft, ArrowDown, ArrowUp, Pause, Play, Trash2, X } from 'lucide-react'
+import { cn } from 'cn'
+import { ArrowLeft, ArrowDown, ArrowUp, GripVertical, Pause, Play, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
@@ -275,6 +286,120 @@ function SystemActionForm({
   )
 }
 
+/**
+ * Paste-many-URLs-at-once import, plus an "Import from file…" button that reads a local text
+ * file (one line per URL, same as pasting) through the main process — the renderer has no fs
+ * access of its own. Validation/dedup happens in QueueManager.addDownloads (see its doc for the
+ * exact policy); this only shows what came back.
+ */
+function BatchImportDialog({
+  queueId,
+  open,
+  onOpenChange
+}: {
+  queueId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}): React.JSX.Element {
+  const [text, setText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<BatchAddResult | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+
+  const handleImportFile = async (): Promise<void> => {
+    setFileError(null)
+    try {
+      const content = await window.plexo.chooseTextFile()
+      if (content === null) return
+      setText((previous) => (previous.trim() ? `${previous}\n${content}` : content))
+    } catch {
+      setFileError('Could not read that file.')
+    }
+  }
+
+  const handleAdd = async (): Promise<void> => {
+    if (!text.trim() || importing) return
+    setImporting(true)
+    setResult(null)
+    try {
+      const outcome = await window.plexo.addQueueDownloads(queueId, text.split('\n'))
+      setResult(outcome)
+      if (outcome.added.length > 0) setText('')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (!nextOpen) {
+      setText('')
+      setResult(null)
+      setFileError(null)
+    }
+    onOpenChange(nextOpen)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add multiple downloads</DialogTitle>
+          <DialogDescription>
+            One URL per line. Blank lines are ignored; anything that isn&apos;t a usable link is
+            reported below instead of being added.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2.5">
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={'https://example.com/a.zip\nhttps://example.com/b.zip'}
+            rows={8}
+            className="w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 font-mono text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={handleImportFile}
+          >
+            Import from file…
+          </Button>
+          {fileError && <div className="font-sans text-[11px] text-destructive">{fileError}</div>}
+          {result && (
+            <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-2.5">
+              <div className="font-sans text-[11.5px] font-medium">
+                {result.added.length} added
+                {result.skipped.length > 0 && `, ${result.skipped.length} skipped`}
+              </div>
+              {result.skipped.length > 0 && (
+                <div className="flex max-h-24 flex-col gap-0.5 overflow-y-auto">
+                  {result.skipped.map((entry, index) => (
+                    <div
+                      key={index}
+                      className="truncate font-mono text-[10.5px] text-muted-foreground"
+                    >
+                      {entry.reason === 'invalid' ? 'Not a usable link: ' : 'Already queued: '}
+                      {entry.url}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>Close</DialogClose>
+          <Button type="button" disabled={!text.trim() || importing} onClick={handleAdd}>
+            {importing ? 'Adding…' : 'Add all'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const ITEM_STATUS_LABEL: Record<QueueItemStatus, string> = {
   pending: 'Queued',
   downloading: 'Downloading',
@@ -297,13 +422,26 @@ function QueueItemRow({
   item,
   isFirst,
   isLast,
-  onMove
+  onMove,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onDropOnto
 }: {
   queueId: string
   item: QueueItem
   isFirst: boolean
   isLast: boolean
   onMove: (direction: -1 | 1) => void
+  /** Drag-and-drop reordering — an addition alongside the up/down buttons above, not a
+   * replacement: HTML5 drag events aren't reachable by keyboard, so the buttons (and a future
+   * screen reader's view of them) stay the only way to reorder without a mouse. Native HTML5
+   * drag/drop (draggable + dragstart/dragover/drop) rather than a library — nothing in
+   * package.json already covers it, and this list is small enough not to need one. */
+  isDragging: boolean
+  onDragStart: () => void
+  onDragEnd: () => void
+  onDropOnto: () => void
 }): React.JSX.Element {
   const canPause = item.status === 'pending' || item.status === 'downloading'
   const canResume = item.status === 'paused'
@@ -311,8 +449,34 @@ function QueueItemRow({
     item.status === 'pending' || item.status === 'downloading' || item.status === 'paused'
 
   return (
-    <div className="flex flex-col gap-2 rounded-[10px] border-[0.5px] border-border bg-card p-[11px_13px]">
+    <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move'
+        // Required by Firefox for a drag to start at all; the actual reorder is driven by
+        // onDragStart/onDropOnto's closures below, not by reading this back out.
+        event.dataTransfer.setData('text/plain', item.id)
+        onDragStart()
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+      }}
+      onDrop={(event) => {
+        event.preventDefault()
+        onDropOnto()
+      }}
+      className={cn(
+        'flex flex-col gap-2 rounded-[10px] border-[0.5px] border-border bg-card p-[11px_13px] transition-opacity',
+        isDragging && 'opacity-40'
+      )}
+    >
       <div className="flex items-center gap-2.5">
+        <GripVertical
+          aria-hidden="true"
+          className="size-4 shrink-0 cursor-grab text-muted-foreground"
+        />
         <div className="min-w-0 flex-1">
           <div className="truncate font-sans text-[12.5px] font-medium">{item.fileName}</div>
           <div className="truncate font-mono text-[10.5px] text-muted-foreground">{item.url}</div>
@@ -447,6 +611,8 @@ export function QueueDetailScreen({
   const [nameDraft, setNameDraft] = useState(queue?.name ?? '')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
 
   if (!queue) {
     return (
@@ -486,6 +652,20 @@ export function QueueDetailScreen({
     const swapWith = index + direction
     if (swapWith < 0 || swapWith >= ids.length) return
     ;[ids[index], ids[swapWith]] = [ids[swapWith], ids[index]]
+    void window.plexo.reorderQueueItems(queueId, ids)
+  }
+
+  /** Drops whatever's being dragged just before `targetId` — the same reorderQueueItems IPC call
+   * the up/down buttons use, so dragging never diverges from the keyboard-accessible path. */
+  const handleDropOnto = (targetId: string): void => {
+    const draggedId = draggedItemId
+    setDraggedItemId(null)
+    if (!draggedId || draggedId === targetId) return
+    const ids = queue.items.map((item) => item.id)
+    const fromIndex = ids.indexOf(draggedId)
+    if (fromIndex === -1 || !ids.includes(targetId)) return
+    ids.splice(fromIndex, 1)
+    ids.splice(ids.indexOf(targetId), 0, draggedId)
     void window.plexo.reorderQueueItems(queueId, ids)
   }
 
@@ -577,10 +757,14 @@ export function QueueDetailScreen({
         <Button type="button" disabled={!url.trim() || adding} onClick={handleAdd}>
           Add
         </Button>
+        <Button type="button" variant="outline" onClick={() => setBatchOpen(true)}>
+          Add multiple…
+        </Button>
       </div>
       {addError && (
         <div className="px-5 pb-3 font-sans text-[11px] text-destructive">{addError}</div>
       )}
+      <BatchImportDialog queueId={queueId} open={batchOpen} onOpenChange={setBatchOpen} />
 
       <div className="flex flex-col gap-3 px-5 pb-3">
         <SystemActionForm
@@ -616,6 +800,10 @@ export function QueueDetailScreen({
                 isFirst={index === 0}
                 isLast={index === queue.items.length - 1}
                 onMove={(direction) => handleMove(item.id, direction)}
+                isDragging={draggedItemId === item.id}
+                onDragStart={() => setDraggedItemId(item.id)}
+                onDragEnd={() => setDraggedItemId(null)}
+                onDropOnto={() => handleDropOnto(item.id)}
               />
             ))}
           </div>

@@ -238,6 +238,21 @@ export interface QueueItem {
   error?: string
 }
 
+/** One line from a batch import that wasn't added, and why — see QueueManager.addDownloads.
+ * `invalid`: not parseable as an http(s) URL. `duplicate`: the same URL (exact trimmed string)
+ * appears earlier in the same batch, or is already in the target queue. */
+export interface SkippedBatchUrl {
+  url: string
+  reason: 'invalid' | 'duplicate'
+}
+
+/** What a batch import actually did — enough for the renderer to show "N added, M skipped" plus
+ * the specifics, without a second round trip. */
+export interface BatchAddResult {
+  added: QueueItem[]
+  skipped: SkippedBatchUrl[]
+}
+
 export type QueueStatus = 'idle' | 'active' | 'paused' | 'completed'
 
 /** A named, ordered list of downloads the user wants run one after another. Persisted in the
@@ -380,6 +395,32 @@ export interface QueueBandwidthUsage {
   capReached: boolean
   resetSchedule?: BandwidthResetSchedule
   lastResetAt?: number
+}
+
+/** How a URL pasted/added gets auto-routed to a queue (and implicitly its destination, via the
+ * queue's own settings) instead of always requiring the user to pick a queue by hand — see
+ * shared/categoryRules.ts's matchCategoryRule, the one place this is actually evaluated (both
+ * main and renderer import it, so there is exactly one implementation of the matching rules).
+ * Persisted in the main process (see main/storage/categoryRuleStorage.ts), independent of any
+ * Queue, the same way QueueSchedule/QueueAction/QueueBandwidthSettings are — except a rule isn't
+ * keyed by queueId: there can be any number of rules targeting the same queue (or none).
+ */
+export interface CategoryRule {
+  id: string
+  name: string
+  matchType: 'extension' | 'urlPattern'
+  /** For 'extension': a comma-separated list of extensions, no leading dot, case-insensitive
+   * (e.g. "mp4,mkv,avi"). For 'urlPattern': the source of a case-insensitive regular expression
+   * tested against the whole URL — a plain word or domain fragment (e.g. "example.com/movies")
+   * works as a substring match too, since it's valid regex syntax as long as it contains no
+   * metacharacters the user didn't intend literally. An invalid regex simply never matches,
+   * rather than throwing. */
+  pattern: string
+  targetQueueId: string
+  enabled: boolean
+  /** Ascending; first enabled match wins. Reassigned to each rule's index whenever the list is
+   * reordered or a rule is added/removed, so it's always a dense 0..n-1 sequence. */
+  order: number
 }
 
 export interface StartDownloadRequest {

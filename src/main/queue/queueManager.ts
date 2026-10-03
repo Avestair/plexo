@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
-import type { DownloadUpdate, Queue, QueueItem, StartDownloadRequest } from '../../shared/types'
+import type {
+  BatchAddResult,
+  DownloadUpdate,
+  Queue,
+  QueueItem,
+  SkippedBatchUrl,
+  StartDownloadRequest
+} from '../../shared/types'
 import type { DownloadManager } from '../download/downloadManager'
 import { getDefaultDownloadsDir } from '../download/paths'
 import { probeUrl } from '../download/probe'
@@ -24,6 +31,35 @@ function fileNameFromUrl(url: string): string {
     return last || 'download'
   } catch {
     return 'download'
+  }
+}
+
+/** What a batch import treats as "obviously invalid": not parseable as a URL at all, or parseable
+ * but not http(s) — ftp://, a bare file path, or a stray non-URL line typed into the textarea. The
+ * single-add path (addDownload) deliberately stays looser (any non-blank string, same as always)
+ * since that one always was — this stricter check only gates the new batch path, to keep a typo'd
+ * line from silently becoming a doomed queue item instead of a reported skip. */
+function isImportableUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function buildQueueItem(url: string): QueueItem {
+  return {
+    id: randomUUID(),
+    url,
+    fileName: fileNameFromUrl(url),
+    status: 'pending',
+    progress: 0,
+    size: 0,
+    downloadedSize: 0,
+    speedBytesPerSec: 0,
+    timeRemainingSec: 0,
+    addedAt: Date.now()
   }
 }
 
@@ -125,18 +161,7 @@ export class QueueManager {
     if (!queue) throw new Error('Queue not found')
     const trimmed = url.trim()
     if (!trimmed) throw new Error('Enter a URL')
-    const item: QueueItem = {
-      id: randomUUID(),
-      url: trimmed,
-      fileName: fileNameFromUrl(trimmed),
-      status: 'pending',
-      progress: 0,
-      size: 0,
-      downloadedSize: 0,
-      speedBytesPerSec: 0,
-      timeRemainingSec: 0,
-      addedAt: Date.now()
-    }
+    const item = buildQueueItem(trimmed)
     queue.items.push(item)
     // A queue that had finished has somewhere new to go.
     if (queue.status === 'completed') queue.status = 'idle'
@@ -144,6 +169,56 @@ export class QueueManager {
     this.persist()
     void this.tick()
     return structuredClone(item)
+  }
+
+  /**
+   * Adds many URLs to a queue in one go — the batch-import path (a pasted list, or a file read
+   * client-side by the dialog picker). Validates and dedupes before touching the queue at all,
+   * then applies every survivor and persists exactly once, so importing a few hundred lines
+   * doesn't trigger a few hundred debounced saves.
+   *
+   * Dedup policy (documented since it's a judgment call): two kinds of duplicate are skipped —
+   * a URL repeated later in the same batch, and a URL already present anywhere in the target
+   * queue (pending, downloading, or already completed) — both compared as the exact trimmed
+   * string, not a semantic normalization (so `.../a` and `.../a/` are treated as different URLs,
+   * same as the single-add path always has). Comparing against the whole queue, not just its
+   * pending items, means re-pasting a list that was already fully downloaded reports every line
+   * as a duplicate rather than queuing a second copy of each.
+   */
+  async addDownloads(queueId: string, urls: string[]): Promise<BatchAddResult> {
+    await this.initialization
+    const queue = this.find(queueId)
+    if (!queue) throw new Error('Queue not found')
+
+    const seen = new Set(queue.items.map((item) => item.url))
+    const added: QueueItem[] = []
+    const skipped: SkippedBatchUrl[] = []
+
+    for (const raw of urls) {
+      const trimmed = raw.trim()
+      if (!trimmed) continue // blank lines are ignored, not reported
+      if (seen.has(trimmed)) {
+        skipped.push({ url: trimmed, reason: 'duplicate' })
+        continue
+      }
+      if (!isImportableUrl(trimmed)) {
+        skipped.push({ url: trimmed, reason: 'invalid' })
+        continue
+      }
+      const item = buildQueueItem(trimmed)
+      queue.items.push(item)
+      added.push(item)
+      seen.add(trimmed)
+    }
+
+    if (added.length > 0) {
+      if (queue.status === 'completed') queue.status = 'idle'
+      this.recomputeProgress(queue)
+      this.persist()
+      void this.tick()
+    }
+
+    return { added: structuredClone(added), skipped }
   }
 
   async removeDownload(queueId: string, itemId: string): Promise<void> {

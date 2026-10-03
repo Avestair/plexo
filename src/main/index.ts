@@ -19,6 +19,7 @@ import {
 } from './tray'
 import type { DownloadManager } from './download/downloadManager'
 import type { BandwidthManager } from './queue/bandwidthManager'
+import type { CategoryRuleManager } from './queue/categoryRules'
 import type { QueueManager } from './queue/queueManager'
 import type { ScheduleManager } from './queue/scheduleManager'
 import type { SystemActionManager } from './queue/systemActionManager'
@@ -37,6 +38,7 @@ let queueManager: QueueManager | null = null
 let scheduleManager: ScheduleManager | null = null
 let systemActionManager: SystemActionManager | null = null
 let bandwidthManager: BandwidthManager | null = null
+let categoryRuleManager: CategoryRuleManager | null = null
 let quitAfterSuspending = false
 
 // Non-null assertions below: every caller of this only ever runs after registerIpcHandlers has
@@ -130,8 +132,14 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  ;({ downloadManager, queueManager, scheduleManager, systemActionManager, bandwidthManager } =
-    registerIpcHandlers(() => mainWindow))
+  ;({
+    downloadManager,
+    queueManager,
+    scheduleManager,
+    systemActionManager,
+    bandwidthManager,
+    categoryRuleManager
+  } = registerIpcHandlers(() => mainWindow))
 
   nativeTheme.on('updated', () => {
     mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff')
@@ -180,7 +188,8 @@ app.on('before-quit', (event) => {
     queueManager?.flush(),
     scheduleManager?.flush(),
     systemActionManager?.flush(),
-    bandwidthManager?.flush()
+    bandwidthManager?.flush(),
+    categoryRuleManager?.flush()
   ]).finally(() => {
     clearTimeout(forceQuitTimeout)
     quitAfterSuspending = true

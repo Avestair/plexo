@@ -3,6 +3,7 @@ import { IpcChannels } from '../shared/ipc-channels'
 import type { IpcContract } from '../shared/ipc-contract'
 import type {
   AppSettings,
+  CategoryRule,
   DownloadUpdate,
   InitialState,
   NetworkInterfaceInfo,
@@ -37,6 +38,7 @@ const plexoApi = {
   updateSettings: (patch: AppSettings) => invoke('updateSettings', patch),
   probeUrl: (url: string) => invoke('probeUrl', url),
   chooseDestinationFolder: (defaultPath: string) => invoke('chooseDestinationFolder', defaultPath),
+  chooseTextFile: () => invoke('chooseTextFile'),
   readClipboardText: () => invoke('readClipboardText'),
   revealInFolder: (filePath: string) => invoke('revealInFolder', filePath),
   startDownload: (request: IpcContract['startDownload']['args'][0]) =>
@@ -55,6 +57,8 @@ const plexoApi = {
   deleteQueue: (queueId: string) => invoke('deleteQueue', queueId),
   updateQueueName: (queueId: string, name: string) => invoke('updateQueueName', queueId, name),
   addQueueDownload: (queueId: string, url: string) => invoke('addQueueDownload', queueId, url),
+  addQueueDownloads: (queueId: string, urls: string[]) =>
+    invoke('addQueueDownloads', queueId, urls),
   removeQueueDownload: (queueId: string, itemId: string) =>
     invoke('removeQueueDownload', queueId, itemId),
   pauseQueue: (queueId: string) => invoke('pauseQueue', queueId),
@@ -91,6 +95,15 @@ const plexoApi = {
   removeQueueBandwidthLimit: (queueId: string) => invoke('removeQueueBandwidthLimit', queueId),
   getBandwidthUsage: () => invoke('getBandwidthUsage'),
   checkBandwidthNow: () => invoke('checkBandwidthNow'),
+
+  createCategoryRule: (input: IpcContract['createCategoryRule']['args'][0]) =>
+    invoke('createCategoryRule', input),
+  updateCategoryRule: (id: string, patch: IpcContract['updateCategoryRule']['args'][1]) =>
+    invoke('updateCategoryRule', id, patch),
+  getCategoryRule: (id: string) => invoke('getCategoryRule', id),
+  getCategoryRules: () => invoke('getCategoryRules'),
+  removeCategoryRule: (id: string) => invoke('removeCategoryRule', id),
+  reorderCategoryRules: (ids: string[]) => invoke('reorderCategoryRules', ids),
 
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
@@ -129,6 +142,12 @@ const plexoApi = {
       callback(usage)
     ipcRenderer.on(IpcChannels.bandwidthUpdated, listener)
     return () => ipcRenderer.removeListener(IpcChannels.bandwidthUpdated, listener)
+  },
+
+  onCategoryRulesUpdated: (callback: (rules: CategoryRule[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, rules: CategoryRule[]): void => callback(rules)
+    ipcRenderer.on(IpcChannels.categoryRulesUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.categoryRulesUpdated, listener)
   }
 }
 

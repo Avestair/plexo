@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import {
   app,
   clipboard,
@@ -20,6 +20,7 @@ import { deviceBindingSupported } from '../network/deviceBinding'
 import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
 import { BandwidthManager } from '../queue/bandwidthManager'
+import { CategoryRuleManager } from '../queue/categoryRules'
 import { QueueManager } from '../queue/queueManager'
 import { ScheduleManager } from '../queue/scheduleManager'
 import { SystemActionManager } from '../queue/systemActionManager'
@@ -68,6 +69,7 @@ export interface IpcManagers {
   scheduleManager: ScheduleManager
   systemActionManager: SystemActionManager
   bandwidthManager: BandwidthManager
+  categoryRuleManager: CategoryRuleManager
 }
 
 function appPlatform(): AppPlatform {
@@ -90,6 +92,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const systemActions = new SystemActionManager(getWindow, queues)
   const bandwidth = new BandwidthManager(getWindow, queues, manager)
   queues.attachBandwidthGate(bandwidth)
+  const categoryRules = new CategoryRuleManager(getWindow)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -187,6 +190,25 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
     return result.filePaths[0]
   })
 
+  handle('chooseTextFile', async () => {
+    const window = getWindow()
+    if (!window) return null
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Text files', extensions: ['txt', 'csv', 'list'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    try {
+      return await readFile(result.filePaths[0], 'utf-8')
+    } catch (error) {
+      console.error('[plexo] failed to read chosen text file', error)
+      return null
+    }
+  })
+
   handle('readClipboardText', async () => clipboard.readText())
 
   handle('revealInFolder', async (_event, filePath) => {
@@ -236,6 +258,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('deleteQueue', async (_event, queueId) => queues.deleteQueue(queueId))
   handle('updateQueueName', async (_event, queueId, name) => queues.updateQueueName(queueId, name))
   handle('addQueueDownload', async (_event, queueId, url) => queues.addDownload(queueId, url))
+  handle('addQueueDownloads', async (_event, queueId, urls) => queues.addDownloads(queueId, urls))
   handle('removeQueueDownload', async (_event, queueId, itemId) =>
     queues.removeDownload(queueId, itemId)
   )
@@ -282,11 +305,19 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('getBandwidthUsage', async () => bandwidth.getUsage())
   handle('checkBandwidthNow', async () => bandwidth.checkNow())
 
+  handle('createCategoryRule', async (_event, input) => categoryRules.createRule(input))
+  handle('updateCategoryRule', async (_event, id, patch) => categoryRules.updateRule(id, patch))
+  handle('getCategoryRule', async (_event, id) => categoryRules.getRule(id))
+  handle('getCategoryRules', async () => categoryRules.getRules())
+  handle('removeCategoryRule', async (_event, id) => categoryRules.removeRule(id))
+  handle('reorderCategoryRules', async (_event, ids) => categoryRules.reorderRules(ids))
+
   return {
     downloadManager: manager,
     queueManager: queues,
     scheduleManager: schedules,
     systemActionManager: systemActions,
-    bandwidthManager: bandwidth
+    bandwidthManager: bandwidth,
+    categoryRuleManager: categoryRules
   }
 }
