@@ -114,6 +114,7 @@ function QueueRow({
           )}
         </div>
         <Badge variant={statusBadgeVariant(queue.status)}>{STATUS_LABEL[queue.status]}</Badge>
+        {queue.capReached && <Badge variant="destructive">Cap reached</Badge>}
         {action && (
           <Badge variant="outline">
             {action.kind === 'start' ? 'Starts' : 'Pauses'} in {formatCountdown(action.time - now)}

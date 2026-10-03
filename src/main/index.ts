@@ -6,6 +6,7 @@ import { registerIpcHandlers } from './ipc/handlers'
 import { loadThemeSource, migrateLegacyNetworkPreferences } from './settings'
 import { testKnobs } from './testKnobs'
 import type { DownloadManager } from './download/downloadManager'
+import type { BandwidthManager } from './queue/bandwidthManager'
 import type { QueueManager } from './queue/queueManager'
 import type { ScheduleManager } from './queue/scheduleManager'
 import type { SystemActionManager } from './queue/systemActionManager'
@@ -23,6 +24,7 @@ let downloadManager: DownloadManager | null = null
 let queueManager: QueueManager | null = null
 let scheduleManager: ScheduleManager | null = null
 let systemActionManager: SystemActionManager | null = null
+let bandwidthManager: BandwidthManager | null = null
 let quitAfterSuspending = false
 
 function createWindow(): void {
@@ -90,9 +92,8 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  ;({ downloadManager, queueManager, scheduleManager, systemActionManager } = registerIpcHandlers(
-    () => mainWindow
-  ))
+  ;({ downloadManager, queueManager, scheduleManager, systemActionManager, bandwidthManager } =
+    registerIpcHandlers(() => mainWindow))
 
   nativeTheme.on('updated', () => {
     mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff')
@@ -117,6 +118,7 @@ app.on('before-quit', (event) => {
   // alive) if the flush below ever hung.
   scheduleManager?.dispose()
   systemActionManager?.dispose()
+  bandwidthManager?.dispose()
 
   // Guarantee the process exits even if suspending hangs
   const forceQuitTimeout = setTimeout(() => {
@@ -127,7 +129,8 @@ app.on('before-quit', (event) => {
     downloadManager.suspendAll(),
     queueManager?.flush(),
     scheduleManager?.flush(),
-    systemActionManager?.flush()
+    systemActionManager?.flush(),
+    bandwidthManager?.flush()
   ]).finally(() => {
     clearTimeout(forceQuitTimeout)
     quitAfterSuspending = true

@@ -1,6 +1,14 @@
-import type { QueueAction, QueueItem, QueueItemStatus, SystemAction } from '@shared/types'
+import type {
+  BandwidthResetSchedule,
+  QueueAction,
+  QueueBandwidthSettings,
+  QueueBandwidthUsage,
+  QueueItem,
+  QueueItemStatus,
+  SystemAction
+} from '@shared/types'
 import { ArrowLeft, ArrowDown, ArrowUp, Pause, Play, Trash2, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -10,6 +18,160 @@ import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
 import { formatBytes, formatCountdown, formatDuration, formatSpeed } from '../utils/format'
 import { nextScheduleAction } from '../utils/schedule'
+
+/** 90%, matching BandwidthManager.NEAR_CAP_RATIO — kept in sync by hand since the renderer
+ * doesn't import main-process code; it's a display threshold only, not an enforcement one. */
+const NEAR_CAP_RATIO = 0.9
+
+const RESET_SCHEDULE_LABEL: Record<BandwidthResetSchedule, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  never: 'Never'
+}
+
+/** The per-queue bandwidth settings: a speed override (or "use the global limit"), a total
+ * traffic cap, and its reset schedule — same local-draft-until-saved shape as SystemActionForm
+ * above, keyed by the parent on queueId. */
+function BandwidthForm({
+  queueId,
+  existing,
+  usage
+}: {
+  queueId: string
+  existing: QueueBandwidthSettings | undefined
+  usage: QueueBandwidthUsage | undefined
+}): React.JSX.Element {
+  const [useGlobalLimit, setUseGlobalLimit] = useState(() => existing?.useGlobalLimit ?? true)
+  const [speedLimitKBs, setSpeedLimitKBs] = useState(() =>
+    existing?.limit?.maxSpeedBytesPerSec
+      ? String(Math.round(existing.limit.maxSpeedBytesPerSec / 1024))
+      : ''
+  )
+  const [trafficCapGB, setTrafficCapGB] = useState(() =>
+    existing?.limit?.maxTrafficBytes ? String(existing.limit.maxTrafficBytes / 1024 ** 3) : ''
+  )
+  const [resetSchedule, setResetSchedule] = useState<BandwidthResetSchedule>(
+    () => existing?.limit?.resetSchedule ?? 'never'
+  )
+
+  const handleSave = async (): Promise<void> => {
+    const speedKBs = Number(speedLimitKBs)
+    const capGB = Number(trafficCapGB)
+    const maxSpeedBytesPerSec =
+      Number.isFinite(speedKBs) && speedKBs > 0 ? Math.round(speedKBs * 1024) : undefined
+    const maxTrafficBytes =
+      Number.isFinite(capGB) && capGB > 0 ? Math.round(capGB * 1024 ** 3) : undefined
+    const patch: Omit<QueueBandwidthSettings, 'queueId'> = {
+      useGlobalLimit,
+      limit:
+        maxSpeedBytesPerSec || maxTrafficBytes
+          ? { usedBytes: 0, maxSpeedBytesPerSec, maxTrafficBytes, resetSchedule }
+          : undefined
+    }
+    await window.plexo.setQueueBandwidthLimit(queueId, patch)
+  }
+
+  const handleRemove = async (): Promise<void> => {
+    setUseGlobalLimit(true)
+    setSpeedLimitKBs('')
+    setTrafficCapGB('')
+    setResetSchedule('never')
+    await window.plexo.removeQueueBandwidthLimit(queueId)
+  }
+
+  const cap = usage?.maxTrafficBytes
+  const ratio = cap ? Math.min(1, (usage?.usedBytes ?? 0) / cap) : 0
+  const nearCap = !!cap && !usage?.capReached && ratio >= NEAR_CAP_RATIO
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[10px] border-[0.5px] border-border bg-card p-[11px_13px]">
+      <span className="font-sans text-[11.5px] font-medium text-muted-foreground">Bandwidth</span>
+
+      <label className="flex items-center gap-2">
+        <Checkbox
+          checked={useGlobalLimit}
+          onCheckedChange={(checked) => setUseGlobalLimit(checked === true)}
+        />
+        <span className="font-sans text-[11.5px] text-muted-foreground">
+          Use the global speed limit
+        </span>
+      </label>
+
+      {!useGlobalLimit && (
+        <div className="flex items-center gap-2">
+          <span className="font-sans text-[11.5px] text-muted-foreground">Max speed</span>
+          <Input
+            type="number"
+            min={0}
+            placeholder="Unlimited"
+            value={speedLimitKBs}
+            onChange={(event) => setSpeedLimitKBs(event.target.value)}
+            className="h-7 w-24"
+          />
+          <span className="font-sans text-[11.5px] text-muted-foreground">KB/s</span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <span className="font-sans text-[11.5px] text-muted-foreground">Traffic cap</span>
+        <Input
+          type="number"
+          min={0}
+          placeholder="Unlimited"
+          value={trafficCapGB}
+          onChange={(event) => setTrafficCapGB(event.target.value)}
+          className="h-7 w-24"
+        />
+        <span className="font-sans text-[11.5px] text-muted-foreground">GB, resets</span>
+        <select
+          value={resetSchedule}
+          onChange={(event) => setResetSchedule(event.target.value as BandwidthResetSchedule)}
+          className="h-7 rounded-lg border border-input bg-transparent px-2 text-[12px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        >
+          {(Object.keys(RESET_SCHEDULE_LABEL) as BandwidthResetSchedule[]).map((value) => (
+            <option key={value} value={value}>
+              {RESET_SCHEDULE_LABEL[value]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {!!cap && (
+        <div className="flex flex-col gap-1">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-[width] ${
+                usage?.capReached
+                  ? 'bg-destructive'
+                  : nearCap
+                    ? 'bg-[var(--color-usb)]'
+                    : 'bg-primary'
+              }`}
+              style={{ width: `${Math.round(ratio * 100)}%` }}
+            />
+          </div>
+          <div className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+            {formatBytes(usage?.usedBytes ?? 0)} / {formatBytes(cap)} used
+            {usage?.capReached && ' · Cap reached — new downloads in this queue are on hold'}
+            {!usage?.capReached && nearCap && ' · Approaching cap'}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={handleSave}>
+          Save
+        </Button>
+        {existing?.limit && (
+          <Button type="button" size="sm" variant="outline" onClick={handleRemove}>
+            Remove
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const SYSTEM_ACTION_LABEL: Record<SystemAction, string> = {
   none: 'Do nothing',
@@ -266,6 +428,19 @@ export function QueueDetailScreen({
   const systemAction = useAppStore((store) =>
     store.systemActions.find((entry) => entry.queueId === queueId)
   )
+  const bandwidthUsage = useAppStore((store) =>
+    store.bandwidthUsage.find((entry) => entry.queueId === queueId)
+  )
+  const [bandwidthSettings, setBandwidthSettings] = useState<QueueBandwidthSettings | null>(null)
+  useEffect(() => {
+    let disposed = false
+    void window.plexo.getQueueBandwidthLimit(queueId).then((settings) => {
+      if (!disposed) setBandwidthSettings(settings)
+    })
+    return () => {
+      disposed = true
+    }
+  }, [queueId])
   const now = useNow()
   const [url, setUrl] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -367,6 +542,11 @@ export function QueueDetailScreen({
             {formatCountdown(scheduleAction.time - now)}
           </Badge>
         )}
+        {queue.capReached && (
+          // Deliberately distinct from the paused state below: this queue is still 'active',
+          // just not allowed to start anything new until its traffic cap resets.
+          <Badge variant="destructive">Traffic cap reached</Badge>
+        )}
         <div className="flex-1" />
         {canResumeQueue && (
           <Button type="button" size="sm" onClick={() => void window.plexo.resumeQueue(queueId)}>
@@ -402,11 +582,17 @@ export function QueueDetailScreen({
         <div className="px-5 pb-3 font-sans text-[11px] text-destructive">{addError}</div>
       )}
 
-      <div className="px-5 pb-3">
+      <div className="flex flex-col gap-3 px-5 pb-3">
         <SystemActionForm
           key={`${queueId}:${systemAction?.action ?? 'none'}`}
           queueId={queueId}
           existing={systemAction}
+        />
+        <BandwidthForm
+          key={`${queueId}:${bandwidthSettings ? 'loaded' : 'loading'}`}
+          queueId={queueId}
+          existing={bandwidthSettings ?? undefined}
+          usage={bandwidthUsage}
         />
       </div>
 

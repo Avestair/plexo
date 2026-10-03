@@ -19,6 +19,7 @@ import { probeUrl } from '../download/probe'
 import { deviceBindingSupported } from '../network/deviceBinding'
 import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
+import { BandwidthManager } from '../queue/bandwidthManager'
 import { QueueManager } from '../queue/queueManager'
 import { ScheduleManager } from '../queue/scheduleManager'
 import { SystemActionManager } from '../queue/systemActionManager'
@@ -65,6 +66,7 @@ export interface IpcManagers {
   queueManager: QueueManager
   scheduleManager: ScheduleManager
   systemActionManager: SystemActionManager
+  bandwidthManager: BandwidthManager
 }
 
 function appPlatform(): AppPlatform {
@@ -85,6 +87,8 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const queues = new QueueManager(getWindow, manager, networks)
   const schedules = new ScheduleManager(getWindow, queues)
   const systemActions = new SystemActionManager(getWindow, queues)
+  const bandwidth = new BandwidthManager(getWindow, queues, manager)
+  queues.attachBandwidthGate(bandwidth)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -247,10 +251,26 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('confirmSystemAction', async (_event, queueId) => systemActions.confirmNow(queueId))
   handle('getPlatform', async () => appPlatform())
 
+  handle('getGlobalBandwidthLimit', async () => bandwidth.getGlobalLimit())
+  handle('setGlobalBandwidthLimit', async (_event, bytesPerSec) =>
+    bandwidth.setGlobalLimit(bytesPerSec)
+  )
+  handle('getQueueBandwidthLimit', async (_event, queueId) => bandwidth.getQueueLimit(queueId))
+  handle('getQueueBandwidthLimits', async () => bandwidth.getQueueLimits())
+  handle('setQueueBandwidthLimit', async (_event, queueId, patch) =>
+    bandwidth.setQueueLimit(queueId, patch)
+  )
+  handle('removeQueueBandwidthLimit', async (_event, queueId) =>
+    bandwidth.removeQueueLimit(queueId)
+  )
+  handle('getBandwidthUsage', async () => bandwidth.getUsage())
+  handle('checkBandwidthNow', async () => bandwidth.checkNow())
+
   return {
     downloadManager: manager,
     queueManager: queues,
     scheduleManager: schedules,
-    systemActionManager: systemActions
+    systemActionManager: systemActions,
+    bandwidthManager: bandwidth
   }
 }

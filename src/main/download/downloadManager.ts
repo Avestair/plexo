@@ -16,6 +16,7 @@ import type {
   StartDownloadRequest
 } from '../../shared/types'
 import { testKnobs, testStreamsPerNetwork } from '../testKnobs'
+import { RateLimiter } from './bandwidth'
 import { advanceBlock, retractBlock } from './blockProgress'
 import { ConcurrencyController, type Action, type Snapshot } from './concurrency'
 import { downloadChunk, fetchRange, HttpStatusError, RemoteChangedError } from './chunkDownloader'
@@ -473,12 +474,31 @@ export class DownloadManager {
   /** Other main-process code (the queue manager) watching every download's updates, the same
    * ones sent to the window — see onUpdate. */
   private updateListeners = new Set<(update: DownloadUpdate) => void>()
+  /**
+   * The one rate limit in effect right now, shared by every chunk worker of whichever download
+   * is currently running. One instance suffices for the whole manager rather than one per
+   * download: Plexo never runs more than one download at a time (see isIdle/hasActiveDownload),
+   * so there is never a second concurrent transfer that would need a limiter of its own — see
+   * bandwidth.ts's and BandwidthManager's docs for the full reasoning. Reconfigured by
+   * setSpeedLimit (the bandwidth manager decides *when*, this just applies *what*), and reset to
+   * unlimited whenever nothing is running so a later ad-hoc download doesn't inherit a stale cap
+   * before the bandwidth manager has had a chance to push the right one for it.
+   */
+  private readonly rateLimiter = new RateLimiter()
 
   constructor(
     private getWindow: () => BrowserWindow | null,
     private networks: NetworkMonitor
   ) {
     this.initialization = this.restorePersistedDownloads()
+  }
+
+  /** Sets the download speed cap applied to whichever download is currently running (0 =
+   * unlimited). Takes effect immediately, live, without restarting anything — see
+   * RateLimiter.setLimit. Called by BandwidthManager, never by anything inside this class, which
+   * has no opinion of its own about what the number should be. */
+  setSpeedLimit(bytesPerSec: number): void {
+    this.rateLimiter.setLimit(bytesPerSec)
   }
 
   private downloadsRoot(): string {
@@ -1520,6 +1540,7 @@ export class DownloadManager {
         createDestination: () => runtime.file.writer(block.rangeStart + (attempt.startOffset ?? 0)),
         signal: AbortSignal.any([self.controller.signal, attempt.abort.signal]),
         acceptedVersions: runtime.acceptedVersions,
+        rateLimiter: this.rateLimiter,
         onResponse: (info) => (attempt.response = info),
         onNetworkProgress: (bytesThisRun) => {
           const delta = bytesThisRun - attempt.networkReceived

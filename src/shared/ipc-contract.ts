@@ -5,6 +5,8 @@ import type {
   ProbeResult,
   Queue,
   QueueAction,
+  QueueBandwidthSettings,
+  QueueBandwidthUsage,
   QueueItem,
   QueueSchedule,
   StartDownloadRequest,
@@ -70,4 +72,15 @@ export interface IpcContract {
   cancelSystemAction: { args: [queueId: string]; result: void }
   confirmSystemAction: { args: [queueId: string]; result: void }
   getPlatform: { args: []; result: AppPlatform }
+  getGlobalBandwidthLimit: { args: []; result: number }
+  setGlobalBandwidthLimit: { args: [bytesPerSec: number]; result: void }
+  getQueueBandwidthLimit: { args: [queueId: string]; result: QueueBandwidthSettings | null }
+  getQueueBandwidthLimits: { args: []; result: QueueBandwidthSettings[] }
+  setQueueBandwidthLimit: {
+    args: [queueId: string, patch: Omit<QueueBandwidthSettings, 'queueId'>]
+    result: QueueBandwidthSettings
+  }
+  removeQueueBandwidthLimit: { args: [queueId: string]; result: void }
+  getBandwidthUsage: { args: []; result: QueueBandwidthUsage[] }
+  checkBandwidthNow: { args: []; result: void }
 }

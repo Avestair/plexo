@@ -185,6 +185,11 @@ export interface AppSettings {
   destinationDir?: string
   /** User customizations (name/color) per network interface id. */
   networkPreferences?: NetworkPreferences
+  /** App-wide max download speed, applied to every active transfer (ad-hoc or queue-driven)
+   * that doesn't have its own override (see QueueBandwidthSettings.useGlobalLimit). 0 or
+   * undefined = unlimited. A simple scalar setting here, not a BandwidthLimit record — the
+   * global cap has no traffic cap or reset schedule of its own (see BandwidthLimit's doc). */
+  globalMaxSpeedBytesPerSec?: number
 }
 
 /** Everything the renderer needs for its first paint, read synchronously by the preload so no
@@ -233,6 +238,10 @@ export interface Queue {
   status: QueueStatus
   /** 0-100, the average of its items' progress. */
   totalProgress: number
+  /** True while this queue's traffic cap (see QueueBandwidthSettings) is reached: pending items
+   * stop being started, independent of `status`, and distinct from a user-initiated pause (see
+   * BandwidthManager/QueueManager.nextCandidate). Cleared automatically once usage resets. */
+  capReached?: boolean
 }
 
 /** Which weekdays (in the user's local time zone) a schedule repeats on. */
@@ -304,6 +313,60 @@ export interface SystemActionState {
   actions: QueueAction[]
   log: SystemActionLogEntry[]
   pending: PendingSystemAction[]
+}
+
+export type BandwidthResetSchedule = 'daily' | 'weekly' | 'monthly' | 'never'
+
+/**
+ * A speed cap and/or a total-traffic cap, with an optional reset schedule for the traffic side.
+ * Used both per-queue (see QueueBandwidthSettings) and, in a lighter form, for the app-wide
+ * default (see AppSettings.globalMaxSpeedBytesPerSec — a plain number there, since the global
+ * setting is only ever a speed cap: a traffic cap and its reset only make sense scoped to a
+ * queue, where "usage" has a meaning — see main/queue/bandwidthManager.ts).
+ *
+ * Accounting: `usedBytes` is the queue's cumulative bytes downloaded since `lastResetAt`,
+ * advanced by the *delta* in each active download's `bytesDownloaded` while it belongs to this
+ * queue (tracked per download id in BandwidthManager) rather than by re-summing anything — a
+ * pause/resume of the same download only ever adds the bytes it delivers after that point, so
+ * nothing is double-counted, and a download that restarts from scratch (a new download id, e.g.
+ * after an app relaunch drops an in-flight queue item back to 'pending') naturally starts its
+ * delta tracking fresh rather than replaying bytes already credited.
+ */
+export interface BandwidthLimit {
+  /** 0 or undefined = unlimited. */
+  maxSpeedBytesPerSec?: number
+  /** 0 or undefined = unlimited. */
+  maxTrafficBytes?: number
+  resetSchedule?: BandwidthResetSchedule
+  /** Epoch ms usage was last zeroed (or first configured, before any reset has fired). */
+  lastResetAt?: number
+  usedBytes: number
+}
+
+/** A queue's bandwidth settings, keyed by queueId. Persisted in the main process (see
+ * main/storage/bandwidthStorage.ts) independent of the Queue it targets, the same way
+ * QueueSchedule and QueueAction are. */
+export interface QueueBandwidthSettings {
+  queueId: string
+  limit?: BandwidthLimit
+  /** true = ignore limit.maxSpeedBytesPerSec and use the app-wide global speed limit instead.
+   * false = use limit.maxSpeedBytesPerSec on its own — unlimited if it isn't set, since opting
+   * out of the global limit means exactly that, not "fall back to it after all". The traffic cap
+   * and its reset schedule are always this queue's own either way — there's no "global" traffic
+   * cap to defer to. */
+  useGlobalLimit: boolean
+}
+
+/** Live usage for one queue, pushed whenever it changes (a byte tally, a reset, a cap newly
+ * reached) — mirrors Queue[]/QueueSchedule[] pushes. `nearCapRatio` is usedBytes/maxTrafficBytes
+ * when a cap is set, for the renderer's warning state (see useBandwidth's NEAR_CAP_RATIO). */
+export interface QueueBandwidthUsage {
+  queueId: string
+  usedBytes: number
+  maxTrafficBytes?: number
+  capReached: boolean
+  resetSchedule?: BandwidthResetSchedule
+  lastResetAt?: number
 }
 
 export interface StartDownloadRequest {

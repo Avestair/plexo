@@ -54,6 +54,12 @@ function sanitizeSettings(parsed: unknown): AppSettings {
   if (parsed.networkPreferences !== undefined) {
     settings.networkPreferences = sanitizeNetworkPreferences(parsed.networkPreferences)
   }
+  if (
+    typeof parsed.globalMaxSpeedBytesPerSec === 'number' &&
+    parsed.globalMaxSpeedBytesPerSec >= 0
+  ) {
+    settings.globalMaxSpeedBytesPerSec = parsed.globalMaxSpeedBytesPerSec
+  }
   return settings
 }
 

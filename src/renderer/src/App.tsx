@@ -5,6 +5,7 @@ import { NetworkBindingDialog } from './components/NetworkBindingDialog'
 import { SystemActionConfirmDialog } from './components/SystemActionConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
+import { useBandwidth } from './hooks/useBandwidth'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
 import { useNetworkEvents } from './hooks/useNetworks'
 import { useQueues } from './hooks/useQueues'
@@ -18,6 +19,7 @@ import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
 import { QueueDetailScreen } from './screens/QueueDetailScreen'
 import { QueueScreen } from './screens/QueueScreen'
 import { ScheduleScreen } from './screens/ScheduleScreen'
+import { SettingsScreen } from './screens/SettingsScreen'
 import { useAppStore } from './store/useAppStore'
 
 function assertNever(status: never): never {
@@ -76,6 +78,7 @@ function App(): React.JSX.Element {
   useQueues()
   useSchedules()
   useSystemActions()
+  useBandwidth()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
@@ -117,6 +120,8 @@ function App(): React.JSX.Element {
     )
   } else if (view === 'schedule') {
     screen = <ScheduleScreen />
+  } else if (view === 'settings') {
+    screen = <SettingsScreen />
   } else if (currentDownload) {
     ;({ screen, titleBarStatus } = renderDownload(currentDownload, {
       onNewDownload: handleNewDownload,

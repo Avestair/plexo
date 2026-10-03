@@ -8,6 +8,8 @@ import type {
   NetworkInterfaceInfo,
   Queue,
   QueueAction,
+  QueueBandwidthSettings,
+  QueueBandwidthUsage,
   QueueSchedule,
   SystemActionState
 } from '../shared/types'
@@ -79,6 +81,16 @@ const plexoApi = {
   confirmSystemAction: (queueId: string) => invoke('confirmSystemAction', queueId),
   getPlatform: () => invoke('getPlatform'),
 
+  getGlobalBandwidthLimit: () => invoke('getGlobalBandwidthLimit'),
+  setGlobalBandwidthLimit: (bytesPerSec: number) => invoke('setGlobalBandwidthLimit', bytesPerSec),
+  getQueueBandwidthLimit: (queueId: string) => invoke('getQueueBandwidthLimit', queueId),
+  getQueueBandwidthLimits: () => invoke('getQueueBandwidthLimits'),
+  setQueueBandwidthLimit: (queueId: string, patch: Omit<QueueBandwidthSettings, 'queueId'>) =>
+    invoke('setQueueBandwidthLimit', queueId, patch),
+  removeQueueBandwidthLimit: (queueId: string) => invoke('removeQueueBandwidthLimit', queueId),
+  getBandwidthUsage: () => invoke('getBandwidthUsage'),
+  checkBandwidthNow: () => invoke('checkBandwidthNow'),
+
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
     ipcRenderer.on(IpcChannels.queueUpdated, listener)
@@ -109,6 +121,13 @@ const plexoApi = {
     const listener = (_event: IpcRendererEvent, state: SystemActionState): void => callback(state)
     ipcRenderer.on(IpcChannels.systemActionUpdated, listener)
     return () => ipcRenderer.removeListener(IpcChannels.systemActionUpdated, listener)
+  },
+
+  onBandwidthUpdated: (callback: (usage: QueueBandwidthUsage[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, usage: QueueBandwidthUsage[]): void =>
+      callback(usage)
+    ipcRenderer.on(IpcChannels.bandwidthUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.bandwidthUpdated, listener)
   }
 }
 

@@ -42,6 +42,18 @@ export class QueueManager {
   /** Watchers of a queue's status becoming 'completed' (the system-action manager) — see
    * onQueueCompleted. */
   private readonly completionListeners = new Set<(queue: Queue) => void>()
+  /** Watchers of which queue (if any) currently holds the one download slot (the bandwidth
+   * manager, to know which queue's usage/speed-limit applies) — see onActiveChanged. */
+  private readonly activeChangeListeners = new Set<
+    (active: { queueId: string; downloadId: string } | null) => void
+  >()
+  /** Asked, for each active queue, whether its traffic cap has been reached — wired up by the
+   * bandwidth manager after construction (see attachBandwidthGate), since it in turn depends on
+   * this manager's events. Defaults to "never capped" so the queue system works unchanged before
+   * that's attached (and in tests that construct a QueueManager on its own). */
+  private bandwidthGate: { isQueueCapped: (queueId: string) => boolean } = {
+    isQueueCapped: () => false
+  }
 
   constructor(
     private getWindow: () => BrowserWindow | null,
@@ -248,8 +260,42 @@ export class QueueManager {
     return () => this.completionListeners.delete(listener)
   }
 
+  /** Lets the bandwidth manager watch which queue (if any) currently holds the download slot —
+   * same pattern as onQueueCompleted. Fires once right away with the current value, and again
+   * every time it changes. Returns a function that unsubscribes. */
+  onActiveChanged(
+    listener: (active: { queueId: string; downloadId: string } | null) => void
+  ): () => void {
+    this.activeChangeListeners.add(listener)
+    listener(
+      this.active ? { queueId: this.active.queueId, downloadId: this.active.downloadId } : null
+    )
+    return () => this.activeChangeListeners.delete(listener)
+  }
+
+  /** Lets the bandwidth manager decide, for a given queue, whether its traffic cap has been
+   * reached — called from nextCandidate() before starting that queue's next item. Set once at
+   * startup (see main/ipc/handlers.ts); the default gate never caps anything. */
+  attachBandwidthGate(gate: { isQueueCapped: (queueId: string) => boolean }): void {
+    this.bandwidthGate = gate
+  }
+
+  /** Runs tick() on demand from outside — what lets the bandwidth manager re-check for
+   * startable items right after a traffic-cap reset, without waiting for some other queue event
+   * to happen to trigger one. */
+  requestTick(): void {
+    void this.tick()
+  }
+
   private find(queueId: string): Queue | undefined {
     return this.queues.find((queue) => queue.id === queueId)
+  }
+
+  private setActive(active: ActiveDownload | null): void {
+    this.active = active
+    for (const listener of this.activeChangeListeners) {
+      listener(active ? { queueId: active.queueId, downloadId: active.downloadId } : null)
+    }
   }
 
   private recomputeProgress(queue: Queue): void {
@@ -289,19 +335,30 @@ export class QueueManager {
   private async stopActive(): Promise<void> {
     if (!this.active) return
     const { downloadId } = this.active
-    this.active = null
+    this.setActive(null)
     await this.downloads.remove(downloadId)
   }
 
-  /** The first pending item of the first active queue, in queue and item order — queues are
-   * processed FIFO, and so is each queue's own list. */
+  /** The first pending item of the first active, not-capped queue, in queue and item order —
+   * queues are processed FIFO, and so is each queue's own list. Also keeps each active queue's
+   * `capReached` flag in step with the bandwidth gate as a side effect, so the UI can tell a
+   * cap-stopped queue apart from one the user paused even when nothing else changes it. */
   private nextCandidate(): { queue: Queue; item: QueueItem } | undefined {
+    let changed = false
+    let candidate: { queue: Queue; item: QueueItem } | undefined
     for (const queue of this.queues) {
       if (queue.status !== 'active') continue
+      const capped = this.bandwidthGate.isQueueCapped(queue.id)
+      if (!!queue.capReached !== capped) {
+        queue.capReached = capped
+        changed = true
+      }
+      if (capped || candidate) continue
       const item = queue.items.find((entry) => entry.status === 'pending')
-      if (item) return { queue, item }
+      if (item) candidate = { queue, item }
     }
-    return undefined
+    if (changed) this.persist()
+    return candidate
   }
 
   /** Starts the next queued item, if the download slot is free. Bounded by the total item count
@@ -331,7 +388,7 @@ export class QueueManager {
             lastModified: probe.lastModified
           }
           const downloadId = await this.downloads.start(request)
-          this.active = { queueId: queue.id, itemId: item.id, downloadId }
+          this.setActive({ queueId: queue.id, itemId: item.id, downloadId })
           item.status = 'downloading'
           item.fileName = request.suggestedFileName
           item.size = request.totalBytes
@@ -372,7 +429,7 @@ export class QueueManager {
     const queue = this.find(this.active.queueId)
     const item = queue?.items.find((entry) => entry.id === this.active!.itemId)
     if (!queue || !item) {
-      this.active = null
+      this.setActive(null)
       void this.tick()
       return
     }
@@ -430,7 +487,7 @@ export class QueueManager {
 
     if (done) {
       const downloadId = state.id
-      this.active = null
+      this.setActive(null)
       // The queue has captured everything it needs from this download — freeing the slot now,
       // rather than leaving it to linger as "the current download", lets the next item (or an
       // ad-hoc download) start right away.

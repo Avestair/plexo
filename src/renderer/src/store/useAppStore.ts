@@ -9,6 +9,7 @@ import type {
   PendingSystemAction,
   Queue,
   QueueAction,
+  QueueBandwidthUsage,
   QueueSchedule,
   SystemActionLogEntry,
   SystemActionState,
@@ -72,6 +73,12 @@ interface AppStore {
   /** Countdowns currently in progress, waiting to be confirmed/cancelled or to elapse. */
   pendingSystemActions: PendingSystemAction[]
 
+  /** Every queue's bandwidth usage (and cap, if any), pushed whole each time any of it changes
+   * (see useBandwidth). The limits themselves (global and per-queue) aren't kept here — they're
+   * read/written directly through window.plexo where needed (QueueDetailScreen/SettingsScreen),
+   * the same as AppSettings fields that aren't part of InitialState. */
+  bandwidthUsage: QueueBandwidthUsage[]
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -91,6 +98,7 @@ interface AppStore {
   /** Initial load only (actions + log) — leaves pendingSystemActions untouched, so it can't
    * clobber a countdown's live push that arrived first (see useSystemActions). */
   receiveSystemActionConfig: (actions: QueueAction[], log: SystemActionLogEntry[]) => void
+  receiveBandwidthUsage: (usage: QueueBandwidthUsage[]) => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -128,6 +136,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   systemActions: [],
   systemActionLog: [],
   pendingSystemActions: [],
+  bandwidthUsage: [],
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -243,5 +252,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       pendingSystemActions: state.pending
     }),
   receiveSystemActionConfig: (systemActions, systemActionLog) =>
-    set({ systemActions, systemActionLog })
+    set({ systemActions, systemActionLog }),
+  receiveBandwidthUsage: (bandwidthUsage) => set({ bandwidthUsage })
 }))

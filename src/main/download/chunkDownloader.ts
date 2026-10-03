@@ -3,6 +3,7 @@ import type { ClientRequest, IncomingMessage } from 'node:http'
 import { URL } from 'node:url'
 import { asConnectionError, type StreamConnection } from '../network/routes'
 import { testKnobs } from '../testKnobs'
+import type { RateLimiter } from './bandwidth'
 import { compareVersion, type FileVersion, type VersionCheck } from './fileVersion'
 
 export interface ChunkDownloadOptions {
@@ -23,6 +24,12 @@ export interface ChunkDownloadOptions {
   /** Called once the server has answered with usable headers: how long that took, and whether
    * the request went out on a connection an earlier one had already warmed up. */
   onResponse?: (info: { ttfbMs: number; reusedSocket: boolean }) => void
+  /** Shared by every chunk of this download (see downloadManager.ts's rateLimiter and
+   * bandwidth.ts's doc) — each batch of body bytes waits here before being written, the same way
+   * it already waits out disk backpressure below. Omitted entirely by fetchRange's sample
+   * requests, which are small, rare, and not part of the throttled data path. Unlimited is a
+   * no-op: see RateLimiter.take. */
+  rateLimiter?: RateLimiter
 }
 
 /** A response whose version doesn't match the download's. Nothing from it was written; the
@@ -129,7 +136,8 @@ export function downloadChunk(options: ChunkDownloadOptions): Promise<void> {
     onProgress,
     signal,
     acceptedVersions,
-    onResponse
+    onResponse,
+    rateLimiter
   } = options
 
   return new Promise((resolve, reject) => {
@@ -145,6 +153,15 @@ export function downloadChunk(options: ChunkDownloadOptions): Promise<void> {
     let currentReq: ClientRequest | null = null
     let currentFileStream: Writable | null = null
     let stallWatchdog: NodeJS.Timeout | null = null
+    // A response small enough to arrive in a single TCP read fires 'end' as soon as its one
+    // 'data' event has been delivered and the stream's internal buffer is empty — which Node
+    // does regardless of a pause() called from inside that same 'data' handler (pause only holds
+    // back *further* reads, not an 'end' that was already queued behind an empty buffer). A rate
+    // limiter defers writing that data, so without this, 'end' can run (and close the file) before
+    // the throttled write it's waiting on ever happens, truncating the output. Every rate-limited
+    // write chains onto this, and 'end' waits for it before finishing up.
+    let pendingWrites: Promise<void> = Promise.resolve()
+    let ended = false
 
     const clearWatchdog = (): void => {
       if (stallWatchdog) {
@@ -298,20 +315,44 @@ export function downloadChunk(options: ChunkDownloadOptions): Promise<void> {
               bytesDownloaded += usable.length
               const progress = bytesDownloaded
               onNetworkProgress(progress)
-              if (
-                !fileStream.write(usable, (error) => {
-                  if (error) fail(error)
-                  else if (!settled) onProgress(progress)
-                })
-              ) {
-                // Waiting on the disk says nothing about the network: the watchdog stops until
-                // the writer has caught up.
+
+              const writeUsable = (): void => {
+                if (settled) return
+                if (
+                  !fileStream.write(usable, (error) => {
+                    if (error) fail(error)
+                    else if (!settled) onProgress(progress)
+                  })
+                ) {
+                  // Waiting on the disk says nothing about the network: the watchdog stops until
+                  // the writer has caught up.
+                  clearWatchdog()
+                  res.pause()
+                  fileStream.once('drain', () => {
+                    resetWatchdog()
+                    res.resume()
+                  })
+                }
+              }
+
+              if (rateLimiter) {
+                // Rate-limited the same way disk backpressure already is above: pause the
+                // response, wait for budget, resume. The watchdog stops meanwhile — a throttled
+                // wait isn't a stalled connection — and resumes once writing does. Chained onto
+                // pendingWrites so a response short enough to end before this resolves (see its
+                // declaration above) still has 'end' wait for this write to actually happen.
                 clearWatchdog()
                 res.pause()
-                fileStream.once('drain', () => {
-                  resetWatchdog()
-                  res.resume()
-                })
+                pendingWrites = pendingWrites.then(() =>
+                  rateLimiter.take(usable.length, signal).then(() => {
+                    if (settled) return
+                    resetWatchdog()
+                    res.resume()
+                    writeUsable()
+                  })
+                )
+              } else {
+                writeUsable()
               }
             }
 
@@ -321,19 +362,25 @@ export function downloadChunk(options: ChunkDownloadOptions): Promise<void> {
           })
 
           res.on('end', () => {
-            if (settled) return
+            if (settled || ended) return
+            ended = true
             clearWatchdog()
-            if (expectedBytes !== null && bytesDownloaded !== expectedBytes) {
-              fail(
-                new Error(
-                  `Server returned ${bytesDownloaded} bytes for a ${expectedBytes}-byte range`
+            // See pendingWrites' declaration: 'end' can fire before a throttled write it depends
+            // on has actually happened, so finishing up waits for every one of them first.
+            void pendingWrites.then(() => {
+              if (settled) return
+              if (expectedBytes !== null && bytesDownloaded !== expectedBytes) {
+                fail(
+                  new Error(
+                    `Server returned ${bytesDownloaded} bytes for a ${expectedBytes}-byte range`
+                  )
                 )
-              )
-              return
-            }
-            // Windows cannot reliably reopen/remove a file until its handle closes.
-            fileStream.once('close', () => finish(resolve))
-            fileStream.end()
+                return
+              }
+              // Windows cannot reliably reopen/remove a file until its handle closes.
+              fileStream.once('close', () => finish(resolve))
+              fileStream.end()
+            })
           })
         })
         .catch(fail)

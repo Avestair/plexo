@@ -46,5 +46,14 @@ export const IpcChannels = {
   cancelSystemAction: 'systemAction:cancelPending',
   confirmSystemAction: 'systemAction:confirmNow',
   systemActionUpdated: 'systemAction:onUpdate',
-  getPlatform: 'system:getPlatform'
+  getPlatform: 'system:getPlatform',
+  getGlobalBandwidthLimit: 'bandwidth:getGlobalLimit',
+  setGlobalBandwidthLimit: 'bandwidth:setGlobalLimit',
+  getQueueBandwidthLimit: 'bandwidth:getQueueLimit',
+  getQueueBandwidthLimits: 'bandwidth:getQueueLimits',
+  setQueueBandwidthLimit: 'bandwidth:setQueueLimit',
+  removeQueueBandwidthLimit: 'bandwidth:removeQueueLimit',
+  getBandwidthUsage: 'bandwidth:getUsage',
+  checkBandwidthNow: 'bandwidth:checkNow',
+  bandwidthUpdated: 'bandwidth:onUpdate'
 } as const
