@@ -4,11 +4,18 @@ import type {
   NetworkInterfaceInfo,
   ProbeResult,
   Queue,
+  QueueAction,
   QueueItem,
   QueueSchedule,
   StartDownloadRequest,
+  SystemActionLogEntry,
   UpdateInfo
 } from './types'
+
+/** 'windows'/'macos'/'linux'/'other' — process.platform mapped to what the renderer actually
+ * needs to show (platform-appropriate labels/warnings for sleep/hibernate/shutdown), rather than
+ * every raw NodeJS.Platform value. */
+export type AppPlatform = 'windows' | 'macos' | 'linux' | 'other'
 
 /** The request/response half of the IPC surface (every IpcChannels entry except the
  * main->renderer push events, downloadUpdated, networksChanged and queueUpdated) — one source of
@@ -52,4 +59,15 @@ export interface IpcContract {
   getSchedules: { args: []; result: QueueSchedule[] }
   removeSchedule: { args: [queueId: string]; result: void }
   checkSchedulesNow: { args: []; result: void }
+  setSystemAction: {
+    args: [queueId: string, action: Omit<QueueAction, 'queueId'>]
+    result: QueueAction
+  }
+  getSystemAction: { args: [queueId: string]; result: QueueAction | null }
+  getSystemActions: { args: []; result: QueueAction[] }
+  removeSystemAction: { args: [queueId: string]; result: void }
+  getSystemActionLog: { args: []; result: SystemActionLogEntry[] }
+  cancelSystemAction: { args: [queueId: string]; result: void }
+  confirmSystemAction: { args: [queueId: string]; result: void }
+  getPlatform: { args: []; result: AppPlatform }
 }

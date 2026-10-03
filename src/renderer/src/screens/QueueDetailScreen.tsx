@@ -1,14 +1,117 @@
-import type { QueueItem, QueueItemStatus } from '@shared/types'
+import type { QueueAction, QueueItem, QueueItemStatus, SystemAction } from '@shared/types'
 import { ArrowLeft, ArrowDown, ArrowUp, Pause, Play, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { Checkbox } from '../components/ui/checkbox'
 import { Input } from '../components/ui/input'
 import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
 import { formatBytes, formatCountdown, formatDuration, formatSpeed } from '../utils/format'
 import { nextScheduleAction } from '../utils/schedule'
+
+const SYSTEM_ACTION_LABEL: Record<SystemAction, string> = {
+  none: 'Do nothing',
+  sleep: 'Sleep',
+  hibernate: 'Hibernate',
+  shutdown: 'Shut down'
+}
+
+const DEFAULT_COUNTDOWN_SECONDS = 30
+
+/** The per-queue post-download system action setting: none/sleep/hibernate/shutdown, an optional
+ * confirm-before countdown, and a save/remove pair — same local-draft-until-saved shape as
+ * ScheduleScreen's ScheduleForm, keyed by the parent on queueId so switching queues remounts it
+ * instead of needing an effect to re-sync. */
+function SystemActionForm({
+  queueId,
+  existing
+}: {
+  queueId: string
+  existing: QueueAction | undefined
+}): React.JSX.Element {
+  const [action, setAction] = useState<SystemAction>(() => existing?.action ?? 'none')
+  const [confirmBefore, setConfirmBefore] = useState(() => existing?.confirmBefore ?? true)
+  const [countdownSeconds, setCountdownSeconds] = useState(() =>
+    String(existing?.countdownSeconds ?? DEFAULT_COUNTDOWN_SECONDS)
+  )
+
+  const handleSave = async (): Promise<void> => {
+    const seconds = Number(countdownSeconds)
+    const patch: Omit<QueueAction, 'queueId'> = {
+      action,
+      confirmBefore,
+      countdownSeconds: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : undefined
+    }
+    await window.plexo.setSystemAction(queueId, patch)
+  }
+
+  const handleRemove = async (): Promise<void> => {
+    setAction('none')
+    await window.plexo.removeSystemAction(queueId)
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[10px] border-[0.5px] border-border bg-card p-[11px_13px]">
+      <div className="flex items-center gap-2.5">
+        <span className="font-sans text-[11.5px] font-medium text-muted-foreground">
+          When this queue finishes
+        </span>
+        <select
+          value={action}
+          onChange={(event) => setAction(event.target.value as SystemAction)}
+          className="h-7 rounded-lg border border-input bg-transparent px-2 text-[12px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        >
+          {(Object.keys(SYSTEM_ACTION_LABEL) as SystemAction[]).map((value) => (
+            <option key={value} value={value}>
+              {SYSTEM_ACTION_LABEL[value]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {action !== 'none' && (
+        <>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={confirmBefore}
+              onCheckedChange={(checked) => setConfirmBefore(checked === true)}
+            />
+            <span className="font-sans text-[11.5px] text-muted-foreground">
+              Ask for confirmation first, with a
+            </span>
+            <Input
+              type="number"
+              min={1}
+              disabled={!confirmBefore}
+              value={countdownSeconds}
+              onChange={(event) => setCountdownSeconds(event.target.value)}
+              className="h-7 w-16"
+            />
+            <span className="font-sans text-[11.5px] text-muted-foreground">second countdown</span>
+          </label>
+          {!confirmBefore && (
+            <div className="font-sans text-[11px] text-destructive">
+              Runs immediately, with no chance to cancel.
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" onClick={handleSave}>
+          Save
+        </Button>
+        {existing && existing.action !== 'none' && (
+          <Button type="button" size="sm" variant="outline" onClick={handleRemove}>
+            Remove
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const ITEM_STATUS_LABEL: Record<QueueItemStatus, string> = {
   pending: 'Queued',
@@ -160,6 +263,9 @@ export function QueueDetailScreen({
   const schedule = useAppStore((store) =>
     store.schedules.find((entry) => entry.queueId === queueId)
   )
+  const systemAction = useAppStore((store) =>
+    store.systemActions.find((entry) => entry.queueId === queueId)
+  )
   const now = useNow()
   const [url, setUrl] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -295,6 +401,14 @@ export function QueueDetailScreen({
       {addError && (
         <div className="px-5 pb-3 font-sans text-[11px] text-destructive">{addError}</div>
       )}
+
+      <div className="px-5 pb-3">
+        <SystemActionForm
+          key={`${queueId}:${systemAction?.action ?? 'none'}`}
+          queueId={queueId}
+          existing={systemAction}
+        />
+      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {queue.items.length === 0 ? (

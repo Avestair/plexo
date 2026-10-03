@@ -1,4 +1,4 @@
-import type { Queue, QueueSchedule, QueueStatus } from '@shared/types'
+import type { Queue, QueueSchedule, QueueStatus, SystemAction } from '@shared/types'
 import { useState } from 'react'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
@@ -17,6 +17,57 @@ import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
 import { formatCountdown } from '../utils/format'
 import { nextScheduleAction } from '../utils/schedule'
+
+const SYSTEM_ACTION_LOG_LABEL: Record<SystemAction, string> = {
+  none: 'Nothing',
+  sleep: 'Slept',
+  hibernate: 'Hibernated',
+  shutdown: 'Shut down'
+}
+
+const OUTCOME_LABEL: Record<'ran' | 'cancelled' | 'failed', string> = {
+  ran: 'Ran',
+  cancelled: 'Cancelled',
+  failed: 'Failed'
+}
+
+function outcomeBadgeVariant(
+  outcome: 'ran' | 'cancelled' | 'failed'
+): 'default' | 'secondary' | 'destructive' {
+  if (outcome === 'ran') return 'default'
+  if (outcome === 'failed') return 'destructive'
+  return 'secondary'
+}
+
+/** A simple view of past post-download system actions — queue name, action, when, outcome — the
+ * most recent first. Small and list-shaped on purpose: this is a log, not a dashboard. */
+function SystemActionLog(): React.JSX.Element | null {
+  const log = useAppStore((store) => store.systemActionLog)
+  if (log.length === 0) return null
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border px-5 py-3">
+      <span className="font-sans text-[11.5px] font-medium text-muted-foreground">
+        Recent system actions
+      </span>
+      <div className="flex max-h-32 flex-col gap-1.5 overflow-y-auto">
+        {[...log]
+          .slice()
+          .reverse()
+          .map((entry) => (
+            <div key={entry.id} className="flex items-center gap-2 font-sans text-[11.5px]">
+              <span className="min-w-0 flex-1 truncate">{entry.queueName}</span>
+              <span className="text-muted-foreground">{SYSTEM_ACTION_LOG_LABEL[entry.action]}</span>
+              <span className="text-muted-foreground">{new Date(entry.at).toLocaleString()}</span>
+              <Badge variant={outcomeBadgeVariant(entry.outcome)}>
+                {OUTCOME_LABEL[entry.outcome]}
+              </Badge>
+            </div>
+          ))}
+      </div>
+    </div>
+  )
+}
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
   idle: 'Idle',
@@ -188,6 +239,8 @@ export function QueueScreen({
           </div>
         )}
       </div>
+
+      <SystemActionLog />
 
       <ScreenFooter>
         <div className="font-mono text-[11px] text-muted-foreground">

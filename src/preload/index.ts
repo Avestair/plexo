@@ -7,7 +7,9 @@ import type {
   InitialState,
   NetworkInterfaceInfo,
   Queue,
-  QueueSchedule
+  QueueAction,
+  QueueSchedule,
+  SystemActionState
 } from '../shared/types'
 
 /** Typed wrapper around ipcRenderer.invoke — the channel name picks its args/result shape out of
@@ -67,6 +69,16 @@ const plexoApi = {
   removeSchedule: (queueId: string) => invoke('removeSchedule', queueId),
   checkSchedulesNow: () => invoke('checkSchedulesNow'),
 
+  setSystemAction: (queueId: string, action: Omit<QueueAction, 'queueId'>) =>
+    invoke('setSystemAction', queueId, action),
+  getSystemAction: (queueId: string) => invoke('getSystemAction', queueId),
+  getSystemActions: () => invoke('getSystemActions'),
+  removeSystemAction: (queueId: string) => invoke('removeSystemAction', queueId),
+  getSystemActionLog: () => invoke('getSystemActionLog'),
+  cancelSystemAction: (queueId: string) => invoke('cancelSystemAction', queueId),
+  confirmSystemAction: (queueId: string) => invoke('confirmSystemAction', queueId),
+  getPlatform: () => invoke('getPlatform'),
+
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
     ipcRenderer.on(IpcChannels.queueUpdated, listener)
@@ -91,6 +103,12 @@ const plexoApi = {
       callback(networks)
     ipcRenderer.on(IpcChannels.networksChanged, listener)
     return () => ipcRenderer.removeListener(IpcChannels.networksChanged, listener)
+  },
+
+  onSystemActionUpdated: (callback: (state: SystemActionState) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, state: SystemActionState): void => callback(state)
+    ipcRenderer.on(IpcChannels.systemActionUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.systemActionUpdated, listener)
   }
 }
 

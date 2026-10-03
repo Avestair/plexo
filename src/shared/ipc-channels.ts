@@ -37,5 +37,14 @@ export const IpcChannels = {
   getSchedules: 'schedule:getAll',
   removeSchedule: 'schedule:remove',
   checkSchedulesNow: 'schedule:checkNow',
-  scheduleUpdated: 'schedule:onUpdate'
+  scheduleUpdated: 'schedule:onUpdate',
+  setSystemAction: 'systemAction:set',
+  getSystemAction: 'systemAction:get',
+  getSystemActions: 'systemAction:getAll',
+  removeSystemAction: 'systemAction:remove',
+  getSystemActionLog: 'systemAction:getLog',
+  cancelSystemAction: 'systemAction:cancelPending',
+  confirmSystemAction: 'systemAction:confirmNow',
+  systemActionUpdated: 'systemAction:onUpdate',
+  getPlatform: 'system:getPlatform'
 } as const

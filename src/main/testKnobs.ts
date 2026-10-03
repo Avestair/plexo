@@ -28,7 +28,15 @@ export const testKnobs = {
   hedgeAfterMs: positiveNumber('PLEXO_E2E_HEDGE_MS', 2_000),
   /** Skips the real GitHub check and pretends this version is available, for exercising the
    * update banner without needing an actual newer release published. */
-  forceUpdateVersion: env['PLEXO_FORCE_UPDATE_VERSION']
+  forceUpdateVersion: env['PLEXO_FORCE_UPDATE_VERSION'],
+  /** Replaces runSystemActionCommand's real child_process call with a no-op (see
+   * main/system/systemActions.ts) — the only way e2e tests may exercise a sleep/hibernate/shutdown
+   * decision without ever reaching the real OS command. A packaged build ignores this like every
+   * other knob here, so it can never be stubbed out from outside a shipped app. */
+  systemActionStub: env['PLEXO_E2E_SYSTEM_ACTION_STUB'] === '1',
+  /** When the stub above is active, makes it reject with this message instead of resolving — for
+   * exercising the 'failed' outcome without a real command ever running. */
+  systemActionFailureMessage: env['PLEXO_E2E_SYSTEM_ACTION_FAIL']
 }
 
 /** `PLEXO_E2E_STREAMS=2` fixes how many streams each network runs and turns the automatic

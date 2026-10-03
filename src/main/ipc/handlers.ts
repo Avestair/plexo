@@ -21,9 +21,11 @@ import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
 import { QueueManager } from '../queue/queueManager'
 import { ScheduleManager } from '../queue/scheduleManager'
+import { SystemActionManager } from '../queue/systemActionManager'
 import { loadSettings, saveSettings } from '../settings'
 import { testKnobs } from '../testKnobs'
 import { checkForUpdate, UPDATE_PAGE_URL } from '../updateCheck'
+import type { AppPlatform } from '../../shared/ipc-contract'
 
 async function openNetworkSettings(): Promise<void> {
   if (process.platform === 'win32') {
@@ -62,6 +64,14 @@ export interface IpcManagers {
   downloadManager: DownloadManager
   queueManager: QueueManager
   scheduleManager: ScheduleManager
+  systemActionManager: SystemActionManager
+}
+
+function appPlatform(): AppPlatform {
+  if (process.platform === 'win32') return 'windows'
+  if (process.platform === 'darwin') return 'macos'
+  if (process.platform === 'linux') return 'linux'
+  return 'other'
 }
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcManagers {
@@ -74,6 +84,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const manager = new DownloadManager(getWindow, networks)
   const queues = new QueueManager(getWindow, manager, networks)
   const schedules = new ScheduleManager(getWindow, queues)
+  const systemActions = new SystemActionManager(getWindow, queues)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -225,5 +236,21 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('removeSchedule', async (_event, queueId) => schedules.removeSchedule(queueId))
   handle('checkSchedulesNow', async () => schedules.checkNow())
 
-  return { downloadManager: manager, queueManager: queues, scheduleManager: schedules }
+  handle('setSystemAction', async (_event, queueId, action) =>
+    systemActions.setAction(queueId, action)
+  )
+  handle('getSystemAction', async (_event, queueId) => systemActions.getAction(queueId))
+  handle('getSystemActions', async () => systemActions.getActions())
+  handle('removeSystemAction', async (_event, queueId) => systemActions.removeAction(queueId))
+  handle('getSystemActionLog', async () => systemActions.getLog())
+  handle('cancelSystemAction', async (_event, queueId) => systemActions.cancelPending(queueId))
+  handle('confirmSystemAction', async (_event, queueId) => systemActions.confirmNow(queueId))
+  handle('getPlatform', async () => appPlatform())
+
+  return {
+    downloadManager: manager,
+    queueManager: queues,
+    scheduleManager: schedules,
+    systemActionManager: systemActions
+  }
 }

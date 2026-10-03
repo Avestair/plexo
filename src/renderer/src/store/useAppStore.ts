@@ -6,8 +6,12 @@ import type {
   NetworkInterfaceInfo,
   NetworkPreference,
   NetworkPreferences,
+  PendingSystemAction,
   Queue,
+  QueueAction,
   QueueSchedule,
+  SystemActionLogEntry,
+  SystemActionState,
   ThemeSource,
   UpdateInfo
 } from '@shared/types'
@@ -60,6 +64,14 @@ interface AppStore {
   /** Every queue's schedule, pushed whole each time any of them changes (see useSchedules). */
   schedules: QueueSchedule[]
 
+  /** Every queue's post-download system action config, pushed whole each time any of it changes
+   * (see useSystemActions). */
+  systemActions: QueueAction[]
+  /** Bounded, persisted history of what actually ran. */
+  systemActionLog: SystemActionLogEntry[]
+  /** Countdowns currently in progress, waiting to be confirmed/cancelled or to elapse. */
+  pendingSystemActions: PendingSystemAction[]
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -75,6 +87,10 @@ interface AppStore {
   setDestinationDir: (dir: string) => void
   receiveQueuesUpdate: (queues: Queue[]) => void
   receiveSchedulesUpdate: (schedules: QueueSchedule[]) => void
+  receiveSystemActionUpdate: (state: SystemActionState) => void
+  /** Initial load only (actions + log) — leaves pendingSystemActions untouched, so it can't
+   * clobber a countdown's live push that arrived first (see useSystemActions). */
+  receiveSystemActionConfig: (actions: QueueAction[], log: SystemActionLogEntry[]) => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -109,6 +125,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   queues: [],
   schedules: [],
+  systemActions: [],
+  systemActionLog: [],
+  pendingSystemActions: [],
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -216,5 +235,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   receiveQueuesUpdate: (queues) => set({ queues }),
-  receiveSchedulesUpdate: (schedules) => set({ schedules })
+  receiveSchedulesUpdate: (schedules) => set({ schedules }),
+  receiveSystemActionUpdate: (state) =>
+    set({
+      systemActions: state.actions,
+      systemActionLog: state.log,
+      pendingSystemActions: state.pending
+    }),
+  receiveSystemActionConfig: (systemActions, systemActionLog) =>
+    set({ systemActions, systemActionLog })
 }))

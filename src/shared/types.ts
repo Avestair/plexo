@@ -260,6 +260,52 @@ export interface QueueSchedule {
   enabled: boolean
 }
 
+export type SystemAction = 'none' | 'sleep' | 'hibernate' | 'shutdown'
+
+/** What should happen automatically once a queue finishes — one per queue, keyed by queueId.
+ * Persisted in the main process (see main/storage/systemActionStorage.ts) independent of the
+ * Queue it targets, the same way QueueSchedule is. */
+export interface QueueAction {
+  queueId: string
+  action: SystemAction
+  /** When true, nothing runs until the countdown below is confirmed (or elapses unconfirmed). */
+  confirmBefore: boolean
+  /** Seconds to count down before running, when confirmBefore is true. Unset means a sane
+   * default (see systemActionManager.ts). */
+  countdownSeconds?: number
+}
+
+/** A past (or in-progress-then-settled) system action, kept in a bounded, persisted log so the
+ * user can see what actually ran. */
+export interface SystemActionLogEntry {
+  id: string
+  queueId: string
+  queueName: string
+  action: SystemAction
+  at: number
+  /** What actually happened: run, cancelled during the countdown, or failed to execute. */
+  outcome: 'ran' | 'cancelled' | 'failed'
+  error?: string
+}
+
+/** A countdown currently running for one queue's configured action, pushed live so the renderer
+ * can show (and let the user cancel or skip) it without polling. */
+export interface PendingSystemAction {
+  queueId: string
+  queueName: string
+  action: SystemAction
+  /** Epoch ms this will fire, absent a cancel or an explicit confirmNow. */
+  fireAt: number
+}
+
+/** Everything the renderer needs about post-download system actions, pushed whole each time any
+ * of it changes — mirrors Queue[]/QueueSchedule[] pushes. */
+export interface SystemActionState {
+  actions: QueueAction[]
+  log: SystemActionLogEntry[]
+  pending: PendingSystemAction[]
+}
+
 export interface StartDownloadRequest {
   url: string
   destinationDir: string

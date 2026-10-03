@@ -2,12 +2,14 @@ import type { DownloadState } from '@shared/types'
 import { useEffect, useState } from 'react'
 import { TitleBar, type TitleBarStatus, type TitleBarView } from './components/TitleBar'
 import { NetworkBindingDialog } from './components/NetworkBindingDialog'
+import { SystemActionConfirmDialog } from './components/SystemActionConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
 import { useNetworkEvents } from './hooks/useNetworks'
 import { useQueues } from './hooks/useQueues'
 import { useSchedules } from './hooks/useSchedules'
+import { useSystemActions } from './hooks/useSystemActions'
 import { CompleteScreen } from './screens/CompleteScreen'
 import { DownloadingScreen } from './screens/DownloadingScreen'
 import { ErrorScreen } from './screens/ErrorScreen'
@@ -73,6 +75,7 @@ function App(): React.JSX.Element {
   useNetworkEvents()
   useQueues()
   useSchedules()
+  useSystemActions()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
@@ -133,6 +136,7 @@ function App(): React.JSX.Element {
         <div className="min-h-0 flex-1">{screen}</div>
         <UpdateDialog />
         <NetworkBindingDialog />
+        <SystemActionConfirmDialog />
       </div>
     </TooltipProvider>
   )

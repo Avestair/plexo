@@ -8,6 +8,7 @@ import { testKnobs } from './testKnobs'
 import type { DownloadManager } from './download/downloadManager'
 import type { QueueManager } from './queue/queueManager'
 import type { ScheduleManager } from './queue/scheduleManager'
+import type { SystemActionManager } from './queue/systemActionManager'
 
 // In dev mode the app runs as the raw `electron` binary, which otherwise shows "Electron" in
 // the Dock tooltip/menu bar — must be set before the app is ready. Packaged builds already get
@@ -21,6 +22,7 @@ let mainWindow: BrowserWindow | null = null
 let downloadManager: DownloadManager | null = null
 let queueManager: QueueManager | null = null
 let scheduleManager: ScheduleManager | null = null
+let systemActionManager: SystemActionManager | null = null
 let quitAfterSuspending = false
 
 function createWindow(): void {
@@ -88,7 +90,9 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  ;({ downloadManager, queueManager, scheduleManager } = registerIpcHandlers(() => mainWindow))
+  ;({ downloadManager, queueManager, scheduleManager, systemActionManager } = registerIpcHandlers(
+    () => mainWindow
+  ))
 
   nativeTheme.on('updated', () => {
     mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff')
@@ -108,9 +112,11 @@ app.on('before-quit', (event) => {
   event.preventDefault()
 
   // Stopped right away rather than after the suspend/flush below — nothing it would do (start or
-  // pause a queue) should happen once the app has decided to quit, and a dangling interval would
-  // otherwise keep firing (and keep the process alive) if the flush below ever hung.
+  // pause a queue, or fire a pending sleep/hibernate/shutdown) should happen once the app has
+  // decided to quit, and a dangling timer would otherwise keep firing (and keep the process
+  // alive) if the flush below ever hung.
   scheduleManager?.dispose()
+  systemActionManager?.dispose()
 
   // Guarantee the process exits even if suspending hangs
   const forceQuitTimeout = setTimeout(() => {
@@ -120,7 +126,8 @@ app.on('before-quit', (event) => {
   void Promise.all([
     downloadManager.suspendAll(),
     queueManager?.flush(),
-    scheduleManager?.flush()
+    scheduleManager?.flush(),
+    systemActionManager?.flush()
   ]).finally(() => {
     clearTimeout(forceQuitTimeout)
     quitAfterSuspending = true

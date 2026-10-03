@@ -39,6 +39,9 @@ export class QueueManager {
   private active: ActiveDownload | null = null
   /** Guards tick() against running twice at once — it awaits a probe and a start(), both async. */
   private processing = false
+  /** Watchers of a queue's status becoming 'completed' (the system-action manager) — see
+   * onQueueCompleted. */
+  private readonly completionListeners = new Set<(queue: Queue) => void>()
 
   constructor(
     private getWindow: () => BrowserWindow | null,
@@ -237,11 +240,20 @@ export class QueueManager {
     await flushQueues(structuredClone(this.queues))
   }
 
+  /** Lets other main-process code (the system-action manager) watch a queue transitioning to
+   * 'completed' — the same pattern as DownloadManager.onUpdate. Returns a function that
+   * unsubscribes. */
+  onQueueCompleted(listener: (queue: Queue) => void): () => void {
+    this.completionListeners.add(listener)
+    return () => this.completionListeners.delete(listener)
+  }
+
   private find(queueId: string): Queue | undefined {
     return this.queues.find((queue) => queue.id === queueId)
   }
 
   private recomputeProgress(queue: Queue): void {
+    const wasCompleted = queue.status === 'completed'
     queue.totalProgress = queue.items.length
       ? Math.round(queue.items.reduce((sum, item) => sum + item.progress, 0) / queue.items.length)
       : 0
@@ -251,6 +263,13 @@ export class QueueManager {
       queue.items.every((item) => item.status === 'completed' || item.status === 'failed')
     ) {
       queue.status = 'completed'
+    }
+    // Only the transition into 'completed' fires — not a queue that was already completed (e.g.
+    // another item's progress tick recomputing this), and not the reopen back to 'idle' that
+    // addDownload does when more URLs are added to a finished queue.
+    if (!wasCompleted && queue.status === 'completed') {
+      const snapshot = structuredClone(queue)
+      for (const listener of this.completionListeners) listener(snapshot)
     }
   }
 
