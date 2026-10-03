@@ -74,5 +74,10 @@ export const IpcChannels = {
   setClipboardWatchEnabled: 'clipboard:setWatchEnabled',
   dismissClipboardDetected: 'clipboard:dismissDetected',
   checkClipboardNow: 'clipboard:checkNow',
-  clipboardLinkDetected: 'clipboard:linkDetected'
+  clipboardLinkDetected: 'clipboard:linkDetected',
+  getBrowserIntegrationEnabled: 'browserIntegration:getEnabled',
+  setBrowserIntegrationEnabled: 'browserIntegration:setEnabled',
+  registerNativeMessagingHost: 'browserIntegration:registerHost',
+  getBrowserExtensionDirs: 'browserIntegration:getExtensionDirs',
+  browserLinkReceived: 'browserIntegration:linkReceived'
 } as const

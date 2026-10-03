@@ -18,6 +18,13 @@ import type {
   UpdateInfo
 } from './types'
 
+/** registerNativeMessagingHost's result — see main/browserIntegration/manifestInstaller.ts. */
+export interface BrowserIntegrationInstallResult {
+  installed: string[]
+  skipped: string[]
+  errors: string[]
+}
+
 /** Shaped here (not re-exported from main/queue/categoryRules.ts) so this file — shared by the
  * renderer and preload — never has to resolve a main-process module just for its types. */
 type CategoryRuleInput = Omit<CategoryRule, 'id' | 'order'>
@@ -127,4 +134,17 @@ export interface IpcContract {
   /** Runs one clipboard check synchronously instead of waiting for the poll interval — the escape
    * hatch that makes clipboard detection testable, same pattern as schedule:checkNow. */
   checkClipboardNow: { args: []; result: void }
+  getBrowserIntegrationEnabled: { args: []; result: boolean }
+  setBrowserIntegrationEnabled: { args: [enabled: boolean]; result: void }
+  /** Writes the native messaging host manifest(s) for Chrome and Firefox to their standard per-OS
+   * locations (see manifestInstaller.ts) — the "register native messaging host" button on
+   * SettingsScreen. `chromeExtensionId` is optional and, when given, replaces the placeholder in
+   * the Chrome manifest's allowed_origins. */
+  registerNativeMessagingHost: {
+    args: [chromeExtensionId?: string]
+    result: BrowserIntegrationInstallResult
+  }
+  /** Absolute paths to the bundled browser-extension/chrome and browser-extension/firefox
+   * folders, for SettingsScreen's "reveal in folder" buttons (see revealInFolder). */
+  getBrowserExtensionDirs: { args: []; result: { chrome: string; firefox: string } }
 }

@@ -68,6 +68,18 @@ function sanitizeSettings(parsed: unknown): AppSettings {
   if (typeof parsed.clipboardWatchEnabled === 'boolean') {
     settings.clipboardWatchEnabled = parsed.clipboardWatchEnabled
   }
+  if (typeof parsed.browserIntegrationEnabled === 'boolean') {
+    settings.browserIntegrationEnabled = parsed.browserIntegrationEnabled
+  }
+  // A real Chrome extension id is always exactly 32 lowercase a-p letters — anything else can
+  // never be a real one, so it's dropped here rather than ever reaching a native-messaging
+  // manifest's allowed_origins (see manifestInstaller.ts).
+  if (
+    typeof parsed.browserIntegrationChromeExtensionId === 'string' &&
+    /^[a-p]{32}$/.test(parsed.browserIntegrationChromeExtensionId)
+  ) {
+    settings.browserIntegrationChromeExtensionId = parsed.browserIntegrationChromeExtensionId
+  }
   return settings
 }
 

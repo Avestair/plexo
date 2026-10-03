@@ -6,7 +6,12 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  {
+    // Plain JS for an extension loaded directly by Chrome/Firefox (manifest v3, chrome.*/browser.*
+    // globals) — a different runtime and linting concern entirely from this project's own
+    // TypeScript/React code, so it's excluded rather than forced through this config.
+    ignores: ['**/node_modules', '**/dist', '**/out', 'browser-extension/**']
+  },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

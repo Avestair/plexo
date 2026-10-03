@@ -1,6 +1,7 @@
 import { applyDownloadUpdate } from '@shared/downloadUpdate'
 import type {
   AppSettings,
+  BrowserLinkMessage,
   CategoryRule,
   DownloadState,
   DownloadUpdate,
@@ -93,6 +94,14 @@ interface AppStore {
    * being offered. */
   clipboardDetectedUrl: string | null
 
+  /** A link just sent from the browser extension (see main/browserIntegration/), offered the same
+   * way a clipboard-detected URL is (App.tsx's banner, accept/dismiss) — null when nothing is
+   * currently being offered. Separate from clipboardDetectedUrl rather than reusing it: the two
+   * are unrelated events (a background poll vs. an explicit browser-side click) that can in
+   * principle arrive at the same time, and conflating them would let one silently clobber the
+   * other's banner. */
+  browserLinkUrl: string | null
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -117,6 +126,8 @@ interface AppStore {
   receiveHistoryUpdate: (entries: HistoryEntry[]) => void
   receiveClipboardDetected: (url: string) => void
   dismissClipboardDetected: () => void
+  receiveBrowserLink: (message: BrowserLinkMessage) => void
+  dismissBrowserLink: () => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -158,6 +169,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   categoryRules: [],
   history: [],
   clipboardDetectedUrl: null,
+  browserLinkUrl: null,
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -278,5 +290,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   receiveCategoryRulesUpdate: (categoryRules) => set({ categoryRules }),
   receiveHistoryUpdate: (history) => set({ history }),
   receiveClipboardDetected: (clipboardDetectedUrl) => set({ clipboardDetectedUrl }),
-  dismissClipboardDetected: () => set({ clipboardDetectedUrl: null })
+  dismissClipboardDetected: () => set({ clipboardDetectedUrl: null }),
+  receiveBrowserLink: (message) => set({ browserLinkUrl: message.url }),
+  dismissBrowserLink: () => set({ browserLinkUrl: null })
 }))

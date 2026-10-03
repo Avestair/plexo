@@ -17,6 +17,8 @@ import {
   refreshTrayMenu,
   setTrayEnabled
 } from './tray'
+import type { BrowserIntegrationServer } from './browserIntegration/server'
+import { runNativeMessagingHost } from './browserIntegration/nativeHostMain'
 import type { ClipboardWatcher } from './clipboard/clipboardWatcher'
 import type { DownloadManager } from './download/downloadManager'
 import type { HistoryManager } from './history/historyManager'
@@ -43,7 +45,17 @@ let bandwidthManager: BandwidthManager | null = null
 let categoryRuleManager: CategoryRuleManager | null = null
 let historyManager: HistoryManager | null = null
 let clipboardWatcher: ClipboardWatcher | null = null
+let browserIntegrationServer: BrowserIntegrationServer | null = null
 let quitAfterSuspending = false
+
+// Set by a native messaging host manifest (see browserIntegration/manifestInstaller.ts), which can
+// only ever point at a tiny wrapper script that invokes this exact binary with exactly this one
+// flag — never at anything a browser extension itself chooses. When present, this process is that
+// host: it never creates a window, registers no IPC handlers, and does nothing but relay one
+// message between stdio (the browser) and the local listener (the already-running Plexo, if any)
+// before exiting. See browserIntegration/nativeHostMain.ts for the rest of this phase's security
+// framing.
+const isNativeMessagingHost = process.argv.includes('--native-messaging-host')
 
 // Non-null assertions below: every caller of this only ever runs after registerIpcHandlers has
 // assigned both (at startup, or from a later 'activate'/tray action).
@@ -124,6 +136,12 @@ function createWindow(startHidden: boolean): void {
 }
 
 app.whenReady().then(async () => {
+  if (isNativeMessagingHost) {
+    await runNativeMessagingHost()
+    app.exit(0)
+    return
+  }
+
   electronApp.setAppUserModelId('com.plexo.app')
 
   // A failed move keeps the old file, to retry next launch — it must never stop the window opening.
@@ -147,7 +165,8 @@ app.whenReady().then(async () => {
     bandwidthManager,
     categoryRuleManager,
     historyManager,
-    clipboardWatcher
+    clipboardWatcher,
+    browserIntegrationServer
   } = registerIpcHandlers(() => mainWindow))
 
   nativeTheme.on('updated', () => {
@@ -188,6 +207,7 @@ app.on('before-quit', (event) => {
   bandwidthManager?.dispose()
   historyManager?.dispose()
   clipboardWatcher?.dispose()
+  void browserIntegrationServer?.dispose()
 
   // Guarantee the process exits even if suspending hangs
   const forceQuitTimeout = setTimeout(() => {

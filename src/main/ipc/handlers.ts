@@ -13,6 +13,11 @@ import {
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { IpcContract } from '../../shared/ipc-contract'
 import type { InitialState, ThemeSource } from '../../shared/types'
+import {
+  browserExtensionDirs,
+  registerNativeMessagingHost
+} from '../browserIntegration/manifestInstaller'
+import { BrowserIntegrationServer } from '../browserIntegration/server'
 import { ClipboardWatcher } from '../clipboard/clipboardWatcher'
 import { DownloadManager } from '../download/downloadManager'
 import { getDefaultDownloadsDir, getHomeDir } from '../download/paths'
@@ -74,6 +79,7 @@ export interface IpcManagers {
   categoryRuleManager: CategoryRuleManager
   historyManager: HistoryManager
   clipboardWatcher: ClipboardWatcher
+  browserIntegrationServer: BrowserIntegrationServer
 }
 
 function appPlatform(): AppPlatform {
@@ -99,6 +105,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const categoryRules = new CategoryRuleManager(getWindow)
   const history = new HistoryManager(getWindow, manager, queues)
   const clipboardWatcher = new ClipboardWatcher(getWindow)
+  const browserIntegrationServer = new BrowserIntegrationServer(getWindow)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -333,6 +340,15 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('dismissClipboardDetected', async (_event, url) => clipboardWatcher.dismiss(url))
   handle('checkClipboardNow', async () => clipboardWatcher.checkNow())
 
+  handle('getBrowserIntegrationEnabled', async () => browserIntegrationServer.getEnabled())
+  handle('setBrowserIntegrationEnabled', async (_event, enabled) =>
+    browserIntegrationServer.setEnabled(enabled)
+  )
+  handle('registerNativeMessagingHost', async (_event, chromeExtensionId) =>
+    registerNativeMessagingHost(chromeExtensionId)
+  )
+  handle('getBrowserExtensionDirs', async () => browserExtensionDirs())
+
   return {
     downloadManager: manager,
     queueManager: queues,
@@ -341,6 +357,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
     bandwidthManager: bandwidth,
     categoryRuleManager: categoryRules,
     historyManager: history,
-    clipboardWatcher
+    clipboardWatcher,
+    browserIntegrationServer
   }
 }

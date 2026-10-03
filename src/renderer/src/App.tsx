@@ -8,6 +8,7 @@ import { SystemActionConfirmDialog } from './components/SystemActionConfirmDialo
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useBandwidth } from './hooks/useBandwidth'
+import { useBrowserIntegration } from './hooks/useBrowserIntegration'
 import { useCategoryRules } from './hooks/useCategoryRules'
 import { useClipboardDetection } from './hooks/useClipboardDetection'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
@@ -88,6 +89,7 @@ function App(): React.JSX.Element {
   useCategoryRules()
   useHistory()
   useClipboardDetection()
+  useBrowserIntegration()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
@@ -100,6 +102,8 @@ function App(): React.JSX.Element {
   const setDraftUrl = useAppStore((store) => store.setDraftUrl)
   const clipboardDetectedUrl = useAppStore((store) => store.clipboardDetectedUrl)
   const dismissClipboardDetected = useAppStore((store) => store.dismissClipboardDetected)
+  const browserLinkUrl = useAppStore((store) => store.browserLinkUrl)
+  const dismissBrowserLink = useAppStore((store) => store.dismissBrowserLink)
 
   useEffect(() => {
     checkForUpdate()
@@ -133,6 +137,13 @@ function App(): React.JSX.Element {
     if (!clipboardDetectedUrl) return
     void window.plexo.dismissClipboardDetected(clipboardDetectedUrl)
     dismissClipboardDetected()
+  }
+
+  const handleAcceptBrowserLink = (): void => {
+    if (!browserLinkUrl) return
+    setDraftUrl(browserLinkUrl)
+    dismissBrowserLink()
+    setView('downloads')
   }
 
   let screen: React.JSX.Element
@@ -178,6 +189,29 @@ function App(): React.JSX.Element {
                   Add to downloads
                 </Button>
                 <Button type="button" size="xs" variant="ghost" onClick={handleDismissClipboardUrl}>
+                  Dismiss
+                </Button>
+              </div>
+            </Alert>
+          </div>
+        )}
+        {browserLinkUrl && (
+          <div className="absolute inset-x-0 top-14 z-20 mx-auto w-full max-w-md px-4">
+            <Alert className="shadow-lg">
+              <AlertTitle>Link sent from your browser</AlertTitle>
+              <AlertDescription className="truncate font-mono text-[11px]">
+                {browserLinkUrl}
+              </AlertDescription>
+              <div className="mt-2 flex gap-2">
+                <Button type="button" size="xs" onClick={handleAcceptBrowserLink}>
+                  Add to downloads
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => dismissBrowserLink()}
+                >
                   Dismiss
                 </Button>
               </div>

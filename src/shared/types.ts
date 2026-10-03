@@ -217,6 +217,27 @@ export interface AppSettings {
    * on), and a user upgrading from an earlier version of Plexo never asked for that — opt-in
    * keeps their experience unchanged until they explicitly turn it on in Settings. */
   clipboardWatchEnabled?: boolean
+  /** Whether main/browserIntegration/server.ts's local listener (what a one-click "send to Plexo"
+   * browser extension talks to, through a tiny native-messaging host — see browser-extension/) is
+   * open at all. Off by default: this opens a local socket a native messaging host process can
+   * reach, which a user upgrading from an earlier version never asked for — opt-in keeps their
+   * install unchanged until they explicitly turn it on in Settings, same reasoning as
+   * clipboardWatchEnabled. */
+  browserIntegrationEnabled?: boolean
+  /** The Chrome extension's id, copied from chrome://extensions after loading it unpacked (see
+   * browser-extension/chrome/README.md) and pasted into Settings — used to fill in the Chrome
+   * native-messaging host manifest's allowed_origins so only that specific extension can invoke
+   * the host. A Chrome extension id is always 32 lowercase letters a-p; anything else is rejected
+   * by sanitizeSettings rather than ever reaching a manifest. */
+  browserIntegrationChromeExtensionId?: string
+}
+
+/** What the local listener (and, before it, the native messaging host) accepts — see
+ * main/browserIntegration/server.ts's parseBrowserLinkMessage for the validation this is narrowed
+ * by, and this phase's security framing for why the schema is deliberately this small. */
+export interface BrowserLinkMessage {
+  url: string
+  suggestedFileName?: string
 }
 
 /** Everything the renderer needs for its first paint, read synchronously by the preload so no

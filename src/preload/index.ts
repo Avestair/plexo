@@ -3,6 +3,7 @@ import { IpcChannels } from '../shared/ipc-channels'
 import type { IpcContract } from '../shared/ipc-contract'
 import type {
   AppSettings,
+  BrowserLinkMessage,
   CategoryRule,
   DownloadUpdate,
   ExpectedChecksum,
@@ -118,6 +119,13 @@ const plexoApi = {
   dismissClipboardDetected: (url: string) => invoke('dismissClipboardDetected', url),
   checkClipboardNow: () => invoke('checkClipboardNow'),
 
+  getBrowserIntegrationEnabled: () => invoke('getBrowserIntegrationEnabled'),
+  setBrowserIntegrationEnabled: (enabled: boolean) =>
+    invoke('setBrowserIntegrationEnabled', enabled),
+  registerNativeMessagingHost: (chromeExtensionId?: string) =>
+    invoke('registerNativeMessagingHost', chromeExtensionId),
+  getBrowserExtensionDirs: () => invoke('getBrowserExtensionDirs'),
+
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
     ipcRenderer.on(IpcChannels.queueUpdated, listener)
@@ -173,6 +181,13 @@ const plexoApi = {
     const listener = (_event: IpcRendererEvent, url: string): void => callback(url)
     ipcRenderer.on(IpcChannels.clipboardLinkDetected, listener)
     return () => ipcRenderer.removeListener(IpcChannels.clipboardLinkDetected, listener)
+  },
+
+  onBrowserLinkReceived: (callback: (message: BrowserLinkMessage) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, message: BrowserLinkMessage): void =>
+      callback(message)
+    ipcRenderer.on(IpcChannels.browserLinkReceived, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.browserLinkReceived, listener)
   }
 }
 

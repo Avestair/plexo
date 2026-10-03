@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Send to Plexo",
+  "version": "1.0.0",
+  "description": "Send a link to Plexo, the download manager, with one click.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "browser-integration@plexo.app",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["contextMenus", "nativeMessaging", "activeTab"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Send this page's link to Plexo",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

@@ -252,6 +252,176 @@ function CategoryRulesSection(): React.JSX.Element {
 }
 
 /**
+ * Enable/disable the local listener a native-messaging host (and, through it, the Chrome/Firefox
+ * extensions under browser-extension/) talks to, an optional Chrome extension id to scope the
+ * Chrome manifest to, a button that (re)writes both browsers' native-messaging host manifests, and
+ * links to the two extension folders to load by hand — see this phase's doc for why registration
+ * is an explicit opt-in action here rather than something that happens automatically: it writes
+ * into the browser's own native-messaging configuration, which a user should choose to do, not
+ * have done for them on first run.
+ */
+function BrowserIntegrationSection(): React.JSX.Element {
+  const [enabled, setEnabled] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [chromeExtensionId, setChromeExtensionId] = useState('')
+  const [extensionDirs, setExtensionDirs] = useState<{ chrome: string; firefox: string } | null>(
+    null
+  )
+  const [registering, setRegistering] = useState(false)
+  const [registerResult, setRegisterResult] = useState<{
+    installed: string[]
+    errors: string[]
+  } | null>(null)
+
+  useEffect(() => {
+    let disposed = false
+    void window.plexo.getBrowserIntegrationEnabled().then((value) => {
+      if (disposed) return
+      setEnabled(value)
+      setLoaded(true)
+    })
+    void window.plexo.getSettings().then((settings) => {
+      if (disposed) return
+      setChromeExtensionId(settings.browserIntegrationChromeExtensionId ?? '')
+    })
+    void window.plexo.getBrowserExtensionDirs().then((dirs) => {
+      if (disposed) return
+      setExtensionDirs(dirs)
+    })
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  const chromeIdValid = chromeExtensionId === '' || /^[a-p]{32}$/.test(chromeExtensionId)
+
+  const handleRegister = async (): Promise<void> => {
+    setRegistering(true)
+    setRegisterResult(null)
+    try {
+      if (chromeIdValid && chromeExtensionId) {
+        await window.plexo.updateSettings({
+          browserIntegrationChromeExtensionId: chromeExtensionId
+        })
+      }
+      const result = await window.plexo.registerNativeMessagingHost(
+        chromeIdValid && chromeExtensionId ? chromeExtensionId : undefined
+      )
+      setRegisterResult(result)
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2.5 rounded-[10px] border-[0.5px] border-border bg-card p-[13px_14px]">
+      <div className="font-sans text-[13px] font-semibold">Browser integration</div>
+      <div className="max-w-80 font-sans text-[11.5px] text-muted-foreground">
+        Send a link straight from Chrome or Firefox to Plexo with one click, instead of copying and
+        pasting it — off by default, since this opens a small local listener a browser extension
+        talks to. Turning it on never intercepts downloads automatically; it only ever acts on a
+        link you explicitly sent.
+      </div>
+      <label className="flex items-center gap-2">
+        <Checkbox
+          checked={enabled}
+          disabled={!loaded}
+          onCheckedChange={(checked) => {
+            const value = checked === true
+            setEnabled(value)
+            void window.plexo.setBrowserIntegrationEnabled(value)
+          }}
+        />
+        <span className="font-sans text-[11.5px] text-muted-foreground">
+          Accept links sent from the browser
+        </span>
+      </label>
+
+      <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
+        <div className="font-sans text-[11.5px] font-medium">1. Load the extension</div>
+        <div className="max-w-80 font-sans text-[11.5px] text-muted-foreground">
+          Each browser needs the matching extension loaded by hand — this can&apos;t be automated.
+          See the README in each folder for the exact steps.
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!extensionDirs}
+            onClick={() => extensionDirs && void window.plexo.revealInFolder(extensionDirs.chrome)}
+          >
+            Show Chrome extension
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!extensionDirs}
+            onClick={() => extensionDirs && void window.plexo.revealInFolder(extensionDirs.firefox)}
+          >
+            Show Firefox extension
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
+        <div className="font-sans text-[11.5px] font-medium">2. Chrome extension id (optional)</div>
+        <div className="max-w-80 font-sans text-[11.5px] text-muted-foreground">
+          After loading the Chrome extension unpacked, copy its id from chrome://extensions and
+          paste it here, so only that extension can reach Plexo. Not needed for Firefox — its
+          extension has a fixed id already built in.
+        </div>
+        <Input
+          placeholder="32 lowercase letters, a-p"
+          value={chromeExtensionId}
+          onChange={(event) => setChromeExtensionId(event.target.value.trim())}
+          className="h-7 w-72 font-mono"
+        />
+        {!chromeIdValid && (
+          <div className="font-sans text-[11px] text-destructive">
+            A Chrome extension id is 32 lowercase letters between a and p.
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5 border-t border-border pt-2.5">
+        <div className="font-sans text-[11.5px] font-medium">
+          3. Register the native messaging host
+        </div>
+        <div className="max-w-80 font-sans text-[11.5px] text-muted-foreground">
+          Writes the small manifest file each browser needs to find and launch Plexo&apos;s native
+          messaging host — the one part of this that would otherwise mean hand-editing JSON.
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={registering || !chromeIdValid}
+          onClick={() => void handleRegister()}
+          className="w-fit"
+        >
+          {registering ? 'Registering…' : 'Register native messaging host'}
+        </Button>
+        {registerResult && (
+          <div className="flex flex-col gap-0.5 font-mono text-[10.5px] text-muted-foreground">
+            {registerResult.installed.map((path) => (
+              <div key={path} className="text-emerald-600 dark:text-emerald-400">
+                ✓ {path}
+              </div>
+            ))}
+            {registerResult.errors.map((error) => (
+              <div key={error} className="text-destructive">
+                ✗ {error}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * App-wide settings: the global max download speed, and platform-integration toggles (tray,
  * start on login, start minimized). Deliberately minimal beyond that — theme lives in the title
  * bar, destination folder on the Start screen, per-queue bandwidth on QueueDetailScreen.
@@ -405,6 +575,8 @@ export function SettingsScreen(): React.JSX.Element {
             </span>
           </label>
         </div>
+
+        <BrowserIntegrationSection />
 
         <CategoryRulesSection />
       </div>

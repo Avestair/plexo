@@ -14,6 +14,13 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# Shipped unpacked (not inside the asar) so "Settings → Browser integration" can point
+# shell.showItemInFolder at it, and so a user can load it straight from the installed app with
+# the browser's own "Load unpacked extension" — no separate download needed. See
+# src/main/browserIntegration/manifestInstaller.ts's browserExtensionDirs().
+extraResources:
+  - from: browser-extension
+    to: browser-extension
 win:
   executableName: plexo
   target:
