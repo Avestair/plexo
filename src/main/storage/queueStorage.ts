@@ -93,9 +93,14 @@ export async function loadQueues(): Promise<Queue[]> {
 }
 
 const AUTOSAVE_MS = 500
+// An active download reports progress every 500ms (see DownloadManager's TICK_MS), which calls
+// scheduleSave on every tick — without a ceiling, that resets AUTOSAVE_MS's timer forever and the
+// whole file (every queue, not just the one downloading) never reaches disk until it stops.
+const MAX_WAIT_MS = 5_000
 
 let timer: NodeJS.Timeout | null = null
 let pending: Queue[] | null = null
+let firstPendingAt: number | null = null
 /** Resolves once every save scheduled so far (via scheduleSave) has finished writing — what
  * flushQueues awaits before quitting. */
 let saveChain: Promise<void> = Promise.resolve()
@@ -108,27 +113,35 @@ async function writeQueues(queues: Queue[]): Promise<void> {
   await updateJson(path, () => queues)
 }
 
+function flushPending(): void {
+  if (timer) clearTimeout(timer)
+  timer = null
+  const toSave = pending
+  pending = null
+  firstPendingAt = null
+  if (toSave) saveChain = saveChain.catch(() => {}).then(() => writeQueues(toSave))
+}
+
 /** Debounced autosave: several changes in quick succession (adding a few URLs, a drag reorder)
- * collapse into one write, AUTOSAVE_MS after the last of them. */
+ * collapse into one write, AUTOSAVE_MS after the last of them — but never later than MAX_WAIT_MS
+ * after the first of them, so a steady stream of changes (an active download's progress ticks)
+ * can't push the save off indefinitely. */
 export function scheduleSave(queues: Queue[]): void {
   pending = queues
+  const now = Date.now()
+  firstPendingAt ??= now
   if (timer) clearTimeout(timer)
-  timer = setTimeout(() => {
-    timer = null
-    const toSave = pending
-    pending = null
-    if (toSave) saveChain = saveChain.catch(() => {}).then(() => writeQueues(toSave))
-  }, AUTOSAVE_MS)
+  const wait = Math.min(AUTOSAVE_MS, firstPendingAt + MAX_WAIT_MS - now)
+  timer = setTimeout(flushPending, Math.max(0, wait))
 }
 
 /** Saves `queues` immediately, skipping (and clearing) any pending debounced save — for app
  * shutdown, where there's no time left to wait out the debounce. */
 export async function flushQueues(queues: Queue[]): Promise<void> {
-  if (timer) {
-    clearTimeout(timer)
-    timer = null
-  }
+  if (timer) clearTimeout(timer)
+  timer = null
   pending = null
+  firstPendingAt = null
   saveChain = saveChain.catch(() => {}).then(() => writeQueues(queues))
   await saveChain
 }

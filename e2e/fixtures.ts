@@ -94,6 +94,7 @@ export class PlexoApp {
           env: {
             ...(process.env as Record<string, string>),
             PLEXO_USER_DATA: this.dirs.userData,
+            PLEXO_E2E_DOWNLOADS_DIR: this.dirs.dest,
             PLEXO_E2E_HIDE_WINDOW: '1',
             PLEXO_E2E_BLOCK_BYTES: String(BLOCK),
             PLEXO_E2E_RETRY_BASE_MS: '20',

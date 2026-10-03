@@ -3,7 +3,11 @@ import { lstat, mkdir, open, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 
 export function getDefaultDownloadsDir(): string {
-  return app.getPath('downloads')
+  // Not read from testKnobs: this module is also imported directly by node-context e2e specs
+  // (e.g. blockProgress.spec.ts) outside Electron, where testKnobs' top-level `app.isPackaged`
+  // read would throw. Mirrors the same "ignored once packaged" guard inline instead.
+  const override = !app.isPackaged && process.env['PLEXO_E2E_DOWNLOADS_DIR']
+  return override || app.getPath('downloads')
 }
 
 export function getHomeDir(): string {
