@@ -31,5 +31,11 @@ export const IpcChannels = {
   reorderQueueItems: 'queue:reorderItems',
   updateQueueName: 'queue:updateQueueName',
   getQueues: 'queue:getQueues',
-  queueUpdated: 'queue:onUpdate'
+  queueUpdated: 'queue:onUpdate',
+  setSchedule: 'schedule:set',
+  getSchedule: 'schedule:get',
+  getSchedules: 'schedule:getAll',
+  removeSchedule: 'schedule:remove',
+  checkSchedulesNow: 'schedule:checkNow',
+  scheduleUpdated: 'schedule:onUpdate'
 } as const

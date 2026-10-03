@@ -235,6 +235,31 @@ export interface Queue {
   totalProgress: number
 }
 
+/** Which weekdays (in the user's local time zone) a schedule repeats on. */
+export interface WeeklyRepeat {
+  monday: boolean
+  tuesday: boolean
+  wednesday: boolean
+  thursday: boolean
+  friday: boolean
+  saturday: boolean
+  sunday: boolean
+}
+
+/** When a queue should start (and optionally pause again) automatically, with optional
+ * daily/weekly repetition — one per queue, keyed by queueId. Persisted in the main process (see
+ * main/storage/scheduleStorage.ts) independent of the Queue it targets. */
+export interface QueueSchedule {
+  queueId: string
+  /** Epoch ms of the next/configured start; null means no start is scheduled. */
+  startTime: number | null
+  /** Epoch ms to pause the queue again; null/undefined means no auto-pause. */
+  sleepTime?: number | null
+  repeatDaily?: boolean
+  repeatWeekly?: WeeklyRepeat
+  enabled: boolean
+}
+
 export interface StartDownloadRequest {
   url: string
   destinationDir: string

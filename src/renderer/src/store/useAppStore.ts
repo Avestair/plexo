@@ -7,6 +7,7 @@ import type {
   NetworkPreference,
   NetworkPreferences,
   Queue,
+  QueueSchedule,
   ThemeSource,
   UpdateInfo
 } from '@shared/types'
@@ -56,6 +57,8 @@ interface AppStore {
 
   /** Every queue, pushed whole each time any of them changes (see useQueues). */
   queues: Queue[]
+  /** Every queue's schedule, pushed whole each time any of them changes (see useSchedules). */
+  schedules: QueueSchedule[]
 
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
@@ -71,6 +74,7 @@ interface AppStore {
   setDraftUrl: (url: string) => void
   setDestinationDir: (dir: string) => void
   receiveQueuesUpdate: (queues: Queue[]) => void
+  receiveSchedulesUpdate: (schedules: QueueSchedule[]) => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -104,6 +108,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   destinationDir: initial.destinationDir ?? initial.downloadsDir,
 
   queues: [],
+  schedules: [],
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -210,5 +215,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     persist({ destinationDir })
   },
 
-  receiveQueuesUpdate: (queues) => set({ queues })
+  receiveQueuesUpdate: (queues) => set({ queues }),
+  receiveSchedulesUpdate: (schedules) => set({ schedules })
 }))

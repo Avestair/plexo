@@ -58,6 +58,21 @@ export function formatDuration(seconds: number): string {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+/** A future offset in ms as a short "Xd Xh"/"Xh Xm"/"Xm" readout, at most two units — for a
+ * schedule's "starts in …"/"pauses in …" countdown. */
+export function formatCountdown(ms: number): string {
+  if (ms <= 0) return 'now'
+  const totalMinutes = Math.round(ms / 60_000)
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+  const minutes = totalMinutes % 60
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}d`)
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`)
+  return parts.slice(0, 2).join(' ')
+}
+
 /** "12.3 MB" -> { value: "12.3", unit: "MB" } — for readouts that size the number and unit separately. */
 export function splitFormattedBytes(bytes: number): { value: string; unit: string } {
   const [value, unit] = formatBytes(bytes).split(' ')

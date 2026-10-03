@@ -7,6 +7,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
 import { useNetworkEvents } from './hooks/useNetworks'
 import { useQueues } from './hooks/useQueues'
+import { useSchedules } from './hooks/useSchedules'
 import { CompleteScreen } from './screens/CompleteScreen'
 import { DownloadingScreen } from './screens/DownloadingScreen'
 import { ErrorScreen } from './screens/ErrorScreen'
@@ -14,6 +15,7 @@ import { IdleScreen } from './screens/IdleScreen'
 import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
 import { QueueDetailScreen } from './screens/QueueDetailScreen'
 import { QueueScreen } from './screens/QueueScreen'
+import { ScheduleScreen } from './screens/ScheduleScreen'
 import { useAppStore } from './store/useAppStore'
 
 function assertNever(status: never): never {
@@ -70,6 +72,7 @@ function App(): React.JSX.Element {
   useDownloadEvents()
   useNetworkEvents()
   useQueues()
+  useSchedules()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
@@ -109,6 +112,8 @@ function App(): React.JSX.Element {
     ) : (
       <QueueScreen onSelectQueue={setSelectedQueueId} />
     )
+  } else if (view === 'schedule') {
+    screen = <ScheduleScreen />
   } else if (currentDownload) {
     ;({ screen, titleBarStatus } = renderDownload(currentDownload, {
       onNewDownload: handleNewDownload,

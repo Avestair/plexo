@@ -5,6 +5,7 @@ import type {
   ProbeResult,
   Queue,
   QueueItem,
+  QueueSchedule,
   StartDownloadRequest,
   UpdateInfo
 } from './types'
@@ -43,4 +44,12 @@ export interface IpcContract {
   reorderQueueItems: { args: [queueId: string, itemIds: string[]]; result: void }
   updateQueueName: { args: [queueId: string, name: string]; result: void }
   getQueues: { args: []; result: Queue[] }
+  setSchedule: {
+    args: [queueId: string, schedule: Omit<QueueSchedule, 'queueId'>]
+    result: QueueSchedule
+  }
+  getSchedule: { args: [queueId: string]; result: QueueSchedule | null }
+  getSchedules: { args: []; result: QueueSchedule[] }
+  removeSchedule: { args: [queueId: string]; result: void }
+  checkSchedulesNow: { args: []; result: void }
 }

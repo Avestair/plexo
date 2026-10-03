@@ -6,7 +6,8 @@ import type {
   DownloadUpdate,
   InitialState,
   NetworkInterfaceInfo,
-  Queue
+  Queue,
+  QueueSchedule
 } from '../shared/types'
 
 /** Typed wrapper around ipcRenderer.invoke — the channel name picks its args/result shape out of
@@ -59,10 +60,24 @@ const plexoApi = {
   reorderQueueItems: (queueId: string, itemIds: string[]) =>
     invoke('reorderQueueItems', queueId, itemIds),
 
+  setSchedule: (queueId: string, schedule: Omit<QueueSchedule, 'queueId'>) =>
+    invoke('setSchedule', queueId, schedule),
+  getSchedule: (queueId: string) => invoke('getSchedule', queueId),
+  getSchedules: () => invoke('getSchedules'),
+  removeSchedule: (queueId: string) => invoke('removeSchedule', queueId),
+  checkSchedulesNow: () => invoke('checkSchedulesNow'),
+
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
     ipcRenderer.on(IpcChannels.queueUpdated, listener)
     return () => ipcRenderer.removeListener(IpcChannels.queueUpdated, listener)
+  },
+
+  onSchedulesUpdated: (callback: (schedules: QueueSchedule[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, schedules: QueueSchedule[]): void =>
+      callback(schedules)
+    ipcRenderer.on(IpcChannels.scheduleUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.scheduleUpdated, listener)
   },
 
   onDownloadUpdated: (callback: (update: DownloadUpdate) => void): (() => void) => {

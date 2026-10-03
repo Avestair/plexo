@@ -9,7 +9,7 @@ export type TitleBarStatus =
   | { kind: 'paused'; networkCount: number }
   | { kind: 'offline' }
 
-export type TitleBarView = 'downloads' | 'queues'
+export type TitleBarView = 'downloads' | 'queues' | 'schedule'
 
 const isMac = window.plexo.platform === 'darwin'
 
@@ -60,6 +60,14 @@ export function TitleBar({
           onClick={() => onChangeView('queues')}
         >
           Queues
+        </Button>
+        <Button
+          type="button"
+          variant={view === 'schedule' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => onChangeView('schedule')}
+        >
+          Schedule
         </Button>
       </div>
       <div className="flex-1" />

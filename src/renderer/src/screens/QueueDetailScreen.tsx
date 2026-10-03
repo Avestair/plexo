@@ -5,8 +5,10 @@ import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
+import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
-import { formatBytes, formatDuration, formatSpeed } from '../utils/format'
+import { formatBytes, formatCountdown, formatDuration, formatSpeed } from '../utils/format'
+import { nextScheduleAction } from '../utils/schedule'
 
 const ITEM_STATUS_LABEL: Record<QueueItemStatus, string> = {
   pending: 'Queued',
@@ -155,6 +157,10 @@ export function QueueDetailScreen({
   onBack: () => void
 }): React.JSX.Element {
   const queue = useAppStore((store) => store.queues.find((entry) => entry.id === queueId))
+  const schedule = useAppStore((store) =>
+    store.schedules.find((entry) => entry.queueId === queueId)
+  )
+  const now = useNow()
   const [url, setUrl] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [nameDraft, setNameDraft] = useState(queue?.name ?? '')
@@ -202,6 +208,8 @@ export function QueueDetailScreen({
     void window.plexo.reorderQueueItems(queueId, ids)
   }
 
+  const scheduleAction = nextScheduleAction(schedule, queue.status)
+
   const completedIds = queue.items
     .filter((item) => item.status === 'completed')
     .map((item) => item.id)
@@ -246,6 +254,12 @@ export function QueueDetailScreen({
           >
             {queue.name}
           </button>
+        )}
+        {scheduleAction && (
+          <Badge variant="outline">
+            {scheduleAction.kind === 'start' ? 'Starts' : 'Pauses'} in{' '}
+            {formatCountdown(scheduleAction.time - now)}
+          </Badge>
         )}
         <div className="flex-1" />
         {canResumeQueue && (

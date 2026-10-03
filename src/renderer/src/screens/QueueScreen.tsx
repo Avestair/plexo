@@ -1,4 +1,4 @@
-import type { Queue, QueueStatus } from '@shared/types'
+import type { Queue, QueueSchedule, QueueStatus } from '@shared/types'
 import { useState } from 'react'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
@@ -13,7 +13,10 @@ import {
   DialogTrigger
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
+import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
+import { formatCountdown } from '../utils/format'
+import { nextScheduleAction } from '../utils/schedule'
 
 const STATUS_LABEL: Record<QueueStatus, string> = {
   idle: 'Idle',
@@ -30,14 +33,19 @@ function statusBadgeVariant(status: QueueStatus): 'default' | 'secondary' | 'out
 
 function QueueRow({
   queue,
+  schedule,
+  now,
   onOpen,
   onDelete
 }: {
   queue: Queue
+  schedule: QueueSchedule | undefined
+  now: number
   onOpen: () => void
   onDelete: () => void
 }): React.JSX.Element {
   const completedCount = queue.items.filter((item) => item.status === 'completed').length
+  const action = nextScheduleAction(schedule, queue.status)
 
   return (
     <button
@@ -55,6 +63,11 @@ function QueueRow({
           )}
         </div>
         <Badge variant={statusBadgeVariant(queue.status)}>{STATUS_LABEL[queue.status]}</Badge>
+        {action && (
+          <Badge variant="outline">
+            {action.kind === 'start' ? 'Starts' : 'Pauses'} in {formatCountdown(action.time - now)}
+          </Badge>
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -89,6 +102,8 @@ export function QueueScreen({
   onSelectQueue: (queueId: string) => void
 }): React.JSX.Element {
   const queues = useAppStore((store) => store.queues)
+  const schedules = useAppStore((store) => store.schedules)
+  const now = useNow()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -164,6 +179,8 @@ export function QueueScreen({
               <QueueRow
                 key={queue.id}
                 queue={queue}
+                schedule={schedules.find((schedule) => schedule.queueId === queue.id)}
+                now={now}
                 onOpen={() => onSelectQueue(queue.id)}
                 onDelete={() => handleDelete(queue.id)}
               />

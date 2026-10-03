@@ -20,6 +20,7 @@ import { deviceBindingSupported } from '../network/deviceBinding'
 import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
 import { QueueManager } from '../queue/queueManager'
+import { ScheduleManager } from '../queue/scheduleManager'
 import { loadSettings, saveSettings } from '../settings'
 import { testKnobs } from '../testKnobs'
 import { checkForUpdate, UPDATE_PAGE_URL } from '../updateCheck'
@@ -60,6 +61,7 @@ const DESTINATION_CHECK_MS = 300
 export interface IpcManagers {
   downloadManager: DownloadManager
   queueManager: QueueManager
+  scheduleManager: ScheduleManager
 }
 
 export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcManagers {
@@ -71,6 +73,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   })
   const manager = new DownloadManager(getWindow, networks)
   const queues = new QueueManager(getWindow, manager, networks)
+  const schedules = new ScheduleManager(getWindow, queues)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -214,5 +217,13 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
     queues.reorderItems(queueId, itemIds)
   )
 
-  return { downloadManager: manager, queueManager: queues }
+  handle('setSchedule', async (_event, queueId, schedule) =>
+    schedules.setSchedule(queueId, schedule)
+  )
+  handle('getSchedule', async (_event, queueId) => schedules.getSchedule(queueId))
+  handle('getSchedules', async () => schedules.getSchedules())
+  handle('removeSchedule', async (_event, queueId) => schedules.removeSchedule(queueId))
+  handle('checkSchedulesNow', async () => schedules.checkNow())
+
+  return { downloadManager: manager, queueManager: queues, scheduleManager: schedules }
 }
