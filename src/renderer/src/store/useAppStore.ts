@@ -6,6 +6,7 @@ import type {
   NetworkInterfaceInfo,
   NetworkPreference,
   NetworkPreferences,
+  Queue,
   ThemeSource,
   UpdateInfo
 } from '@shared/types'
@@ -53,6 +54,9 @@ interface AppStore {
   /** Persisted — the last folder picked, falling back to downloadsDir. */
   destinationDir: string
 
+  /** Every queue, pushed whole each time any of them changes (see useQueues). */
+  queues: Queue[]
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -66,6 +70,7 @@ interface AppStore {
   clearCurrentDownload: () => void
   setDraftUrl: (url: string) => void
   setDestinationDir: (dir: string) => void
+  receiveQueuesUpdate: (queues: Queue[]) => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -97,6 +102,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   draftUrl: '',
   destinationDir: initial.destinationDir ?? initial.downloadsDir,
+
+  queues: [],
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -201,5 +208,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setDestinationDir: (destinationDir) => {
     set({ destinationDir })
     persist({ destinationDir })
-  }
+  },
+
+  receiveQueuesUpdate: (queues) => set({ queues })
 }))

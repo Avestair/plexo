@@ -19,6 +19,7 @@ import { probeUrl } from '../download/probe'
 import { deviceBindingSupported } from '../network/deviceBinding'
 import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
+import { QueueManager } from '../queue/queueManager'
 import { loadSettings, saveSettings } from '../settings'
 import { testKnobs } from '../testKnobs'
 import { checkForUpdate, UPDATE_PAGE_URL } from '../updateCheck'
@@ -56,7 +57,12 @@ function handle<K extends keyof IpcContract>(
 
 const DESTINATION_CHECK_MS = 300
 
-export function registerIpcHandlers(getWindow: () => BrowserWindow | null): DownloadManager {
+export interface IpcManagers {
+  downloadManager: DownloadManager
+  queueManager: QueueManager
+}
+
+export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcManagers {
   // The main process keeps the network list, for downloads and the window alike.
   const networks = new NetworkMonitor((list) => {
     manager.networksChanged()
@@ -64,6 +70,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): Down
     if (window && !window.isDestroyed()) window.webContents.send(IpcChannels.networksChanged, list)
   })
   const manager = new DownloadManager(getWindow, networks)
+  const queues = new QueueManager(getWindow, manager, networks)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -190,5 +197,22 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): Down
     return { ...info, dismissed: info.version === dismissedUpdateVersion }
   })
 
-  return manager
+  handle('getQueues', async () => queues.getQueues())
+  handle('createQueue', async (_event, name, description) => queues.createQueue(name, description))
+  handle('deleteQueue', async (_event, queueId) => queues.deleteQueue(queueId))
+  handle('updateQueueName', async (_event, queueId, name) => queues.updateQueueName(queueId, name))
+  handle('addQueueDownload', async (_event, queueId, url) => queues.addDownload(queueId, url))
+  handle('removeQueueDownload', async (_event, queueId, itemId) =>
+    queues.removeDownload(queueId, itemId)
+  )
+  handle('pauseQueue', async (_event, queueId) => queues.pauseQueue(queueId))
+  handle('resumeQueue', async (_event, queueId) => queues.resumeQueue(queueId))
+  handle('pauseQueueItem', async (_event, queueId, itemId) => queues.pauseItem(queueId, itemId))
+  handle('resumeQueueItem', async (_event, queueId, itemId) => queues.resumeItem(queueId, itemId))
+  handle('cancelQueueItem', async (_event, queueId, itemId) => queues.cancelItem(queueId, itemId))
+  handle('reorderQueueItems', async (_event, queueId, itemIds) =>
+    queues.reorderItems(queueId, itemIds)
+  )
+
+  return { downloadManager: manager, queueManager: queues }
 }

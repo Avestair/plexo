@@ -18,5 +18,18 @@ export const IpcChannels = {
   removeDownload: 'download:remove',
   downloadUpdated: 'download:updated',
   networksChanged: 'network:changed',
-  checkForUpdate: 'update:check'
+  checkForUpdate: 'update:check',
+  createQueue: 'queue:create',
+  deleteQueue: 'queue:delete',
+  addQueueDownload: 'queue:addDownload',
+  removeQueueDownload: 'queue:removeDownload',
+  pauseQueue: 'queue:pauseQueue',
+  resumeQueue: 'queue:resumeQueue',
+  pauseQueueItem: 'queue:pauseItem',
+  resumeQueueItem: 'queue:resumeItem',
+  cancelQueueItem: 'queue:cancelItem',
+  reorderQueueItems: 'queue:reorderItems',
+  updateQueueName: 'queue:updateQueueName',
+  getQueues: 'queue:getQueues',
+  queueUpdated: 'queue:onUpdate'
 } as const

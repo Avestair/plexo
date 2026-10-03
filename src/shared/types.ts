@@ -198,6 +198,43 @@ export interface InitialState {
   destinationDir?: string
 }
 
+export type QueueItemStatus = 'pending' | 'downloading' | 'paused' | 'completed' | 'failed'
+
+/** One URL queued for download, as part of a Queue. Driven through DownloadManager one at a
+ * time — its own progress fields mirror DownloadState while it is the one running. */
+export interface QueueItem {
+  id: string
+  url: string
+  fileName: string
+  status: QueueItemStatus
+  /** 0-100. */
+  progress: number
+  /** 0 means unknown ahead of time, same convention as DownloadState.totalBytes. */
+  size: number
+  downloadedSize: number
+  speedBytesPerSec: number
+  /** Seconds; 0 when it can't be estimated. */
+  timeRemainingSec: number
+  addedAt: number
+  completedAt?: number
+  error?: string
+}
+
+export type QueueStatus = 'idle' | 'active' | 'paused' | 'completed'
+
+/** A named, ordered list of downloads the user wants run one after another. Persisted in the
+ * main process (see main/storage/queueStorage.ts) independent of any single download. */
+export interface Queue {
+  id: string
+  name: string
+  description?: string
+  createdAt: number
+  items: QueueItem[]
+  status: QueueStatus
+  /** 0-100, the average of its items' progress. */
+  totalProgress: number
+}
+
 export interface StartDownloadRequest {
   url: string
   destinationDir: string

@@ -5,7 +5,8 @@ import type {
   AppSettings,
   DownloadUpdate,
   InitialState,
-  NetworkInterfaceInfo
+  NetworkInterfaceInfo,
+  Queue
 } from '../shared/types'
 
 /** Typed wrapper around ipcRenderer.invoke — the channel name picks its args/result shape out of
@@ -42,6 +43,27 @@ const plexoApi = {
   cancelDownload: (downloadId: string) => invoke('cancelDownload', downloadId),
   removeDownload: (downloadId: string) => invoke('removeDownload', downloadId),
   checkForUpdate: () => invoke('checkForUpdate'),
+
+  getQueues: () => invoke('getQueues'),
+  createQueue: (name: string, description?: string) => invoke('createQueue', name, description),
+  deleteQueue: (queueId: string) => invoke('deleteQueue', queueId),
+  updateQueueName: (queueId: string, name: string) => invoke('updateQueueName', queueId, name),
+  addQueueDownload: (queueId: string, url: string) => invoke('addQueueDownload', queueId, url),
+  removeQueueDownload: (queueId: string, itemId: string) =>
+    invoke('removeQueueDownload', queueId, itemId),
+  pauseQueue: (queueId: string) => invoke('pauseQueue', queueId),
+  resumeQueue: (queueId: string) => invoke('resumeQueue', queueId),
+  pauseQueueItem: (queueId: string, itemId: string) => invoke('pauseQueueItem', queueId, itemId),
+  resumeQueueItem: (queueId: string, itemId: string) => invoke('resumeQueueItem', queueId, itemId),
+  cancelQueueItem: (queueId: string, itemId: string) => invoke('cancelQueueItem', queueId, itemId),
+  reorderQueueItems: (queueId: string, itemIds: string[]) =>
+    invoke('reorderQueueItems', queueId, itemIds),
+
+  onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
+    ipcRenderer.on(IpcChannels.queueUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.queueUpdated, listener)
+  },
 
   onDownloadUpdated: (callback: (update: DownloadUpdate) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, update: DownloadUpdate): void => callback(update)

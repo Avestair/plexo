@@ -470,6 +470,9 @@ export class DownloadManager {
   private seenAddresses = new Map<string, string[]>()
   /** The powerSaveBlocker keeping the computer awake while a download runs (see keepAwake). */
   private awakeBlocker: number | null = null
+  /** Other main-process code (the queue manager) watching every download's updates, the same
+   * ones sent to the window — see onUpdate. */
+  private updateListeners = new Set<(update: DownloadUpdate) => void>()
 
   constructor(
     private getWindow: () => BrowserWindow | null,
@@ -643,6 +646,13 @@ export class DownloadManager {
       }
     }
     return false
+  }
+
+  /** Whether start() can claim the one download slot right now — what the queue manager checks
+   * before starting a queued item, so it can wait its turn instead of racing an ad-hoc download
+   * (or another queue) for it. */
+  isIdle(): boolean {
+    return !this.hasActiveDownload()
   }
 
   async start(requestPayload: StartDownloadRequest): Promise<string> {
@@ -2076,12 +2086,22 @@ export class DownloadManager {
     // would put it back on screen after the renderer has already moved on.
     if (this.runtimes.get(runtime.state.id) !== runtime) return
     if (persist) this.schedulePersistence(runtime)
-    const window = this.getWindow()
-    if (!window || window.isDestroyed()) return
     if (runtime.state.status === 'paused' || runtime.state.status === 'cancelled') {
       clearSpeeds(runtime.state)
     }
-    window.webContents.send(IpcChannels.downloadUpdated, this.takeUpdate(runtime))
+    const update = this.takeUpdate(runtime)
+    for (const listener of this.updateListeners) listener(update)
+    const window = this.getWindow()
+    if (!window || window.isDestroyed()) return
+    window.webContents.send(IpcChannels.downloadUpdated, update)
+  }
+
+  /** Lets other main-process code (the queue manager) watch every download's progress, the same
+   * updates sent to the window — without reimplementing any of the download machinery above.
+   * Returns a function that unsubscribes. */
+  onUpdate(listener: (update: DownloadUpdate) => void): () => void {
+    this.updateListeners.add(listener)
+    return () => this.updateListeners.delete(listener)
   }
 
   /** What the window hasn't been sent yet: the download's state, and the blocks that moved. */

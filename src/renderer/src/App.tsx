@@ -1,16 +1,19 @@
 import type { DownloadState } from '@shared/types'
-import { useEffect } from 'react'
-import { TitleBar, type TitleBarStatus } from './components/TitleBar'
+import { useEffect, useState } from 'react'
+import { TitleBar, type TitleBarStatus, type TitleBarView } from './components/TitleBar'
 import { NetworkBindingDialog } from './components/NetworkBindingDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
 import { useNetworkEvents } from './hooks/useNetworks'
+import { useQueues } from './hooks/useQueues'
 import { CompleteScreen } from './screens/CompleteScreen'
 import { DownloadingScreen } from './screens/DownloadingScreen'
 import { ErrorScreen } from './screens/ErrorScreen'
 import { IdleScreen } from './screens/IdleScreen'
 import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
+import { QueueDetailScreen } from './screens/QueueDetailScreen'
+import { QueueScreen } from './screens/QueueScreen'
 import { useAppStore } from './store/useAppStore'
 
 function assertNever(status: never): never {
@@ -66,6 +69,10 @@ function renderDownload(
 function App(): React.JSX.Element {
   useDownloadEvents()
   useNetworkEvents()
+  useQueues()
+
+  const [view, setView] = useState<TitleBarView>('downloads')
+  const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
 
   const interfaces = useAppStore((store) => store.interfaces)
   const interfacesStatus = useAppStore((store) => store.interfacesStatus)
@@ -96,7 +103,13 @@ function App(): React.JSX.Element {
   let screen: React.JSX.Element
   let titleBarStatus: TitleBarStatus = { kind: 'none' }
 
-  if (currentDownload) {
+  if (view === 'queues') {
+    screen = selectedQueueId ? (
+      <QueueDetailScreen queueId={selectedQueueId} onBack={() => setSelectedQueueId(null)} />
+    ) : (
+      <QueueScreen onSelectQueue={setSelectedQueueId} />
+    )
+  } else if (currentDownload) {
     ;({ screen, titleBarStatus } = renderDownload(currentDownload, {
       onNewDownload: handleNewDownload,
       onDownloadAgain: handleDownloadAgain
@@ -111,7 +124,7 @@ function App(): React.JSX.Element {
   return (
     <TooltipProvider>
       <div className="flex h-full flex-col">
-        <TitleBar status={titleBarStatus} />
+        <TitleBar status={titleBarStatus} view={view} onChangeView={setView} />
         <div className="min-h-0 flex-1">{screen}</div>
         <UpdateDialog />
         <NetworkBindingDialog />

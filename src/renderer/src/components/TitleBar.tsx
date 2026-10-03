@@ -1,4 +1,5 @@
 import { ColorBadge } from './ColorBadge'
+import { Button } from './ui/button'
 import { ThemeToggle } from './ThemeToggle'
 import { UpdateIndicator } from './UpdateIndicator'
 
@@ -8,13 +9,23 @@ export type TitleBarStatus =
   | { kind: 'paused'; networkCount: number }
   | { kind: 'offline' }
 
+export type TitleBarView = 'downloads' | 'queues'
+
 const isMac = window.plexo.platform === 'darwin'
 
 const pillClass =
   'h-auto flex items-center gap-[7px] rounded-full px-2.5 py-1 font-mono text-[10px] leading-none font-semibold tracking-[0.08em] uppercase whitespace-nowrap'
 const pillDotClass = 'size-1.5 shrink-0 rounded-full'
 
-export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Element {
+export function TitleBar({
+  status,
+  view,
+  onChangeView
+}: {
+  status: TitleBarStatus
+  view: TitleBarView
+  onChangeView: (view: TitleBarView) => void
+}): React.JSX.Element {
   const dimmed = status.kind === 'offline'
 
   return (
@@ -32,6 +43,24 @@ export function TitleBar({ status }: { status: TitleBarStatus }): React.JSX.Elem
         }`}
       >
         Plexo
+      </div>
+      <div className="flex items-center gap-0.5 [-webkit-app-region:no-drag]">
+        <Button
+          type="button"
+          variant={view === 'downloads' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => onChangeView('downloads')}
+        >
+          Download
+        </Button>
+        <Button
+          type="button"
+          variant={view === 'queues' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => onChangeView('queues')}
+        >
+          Queues
+        </Button>
       </div>
       <div className="flex-1" />
       {status.kind === 'combined' && (
