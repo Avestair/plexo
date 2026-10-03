@@ -190,6 +190,19 @@ export interface AppSettings {
    * undefined = unlimited. A simple scalar setting here, not a BandwidthLimit record — the
    * global cap has no traffic cap or reset schedule of its own (see BandwidthLimit's doc). */
   globalMaxSpeedBytesPerSec?: number
+  /** Whether closing the main window (the OS close button) hides it to a tray icon instead of
+   * quitting the app. Off by default — not every user wants a background process they didn't
+   * explicitly ask to keep running. The tray icon itself is created/destroyed to match this
+   * setting as soon as it changes, no restart required (see main/tray.ts). */
+  minimizeToTrayOnClose?: boolean
+  /** Registers (or unregisters) Plexo as a login item via app.setLoginItemSettings. Off by
+   * default. Applied on every app startup (in case the setting was changed, or a previous
+   * version's registration is stale) and whenever this setting itself changes. */
+  startOnLogin?: boolean
+  /** Skips showing the main window on launch — it stays hidden until the user brings it up from
+   * the tray (if minimizeToTrayOnClose is also on) or otherwise reveals it. Independent of
+   * startOnLogin: a user may want either on its own, or both together. Off by default. */
+  startMinimized?: boolean
 }
 
 /** Everything the renderer needs for its first paint, read synchronously by the preload so no

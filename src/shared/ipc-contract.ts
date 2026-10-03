@@ -28,6 +28,7 @@ export interface IpcContract {
   pingInterfaces: { args: []; result: Record<string, number | null> }
   deviceBindingSupported: { args: []; result: boolean }
   openNetworkSettings: { args: []; result: void }
+  getSettings: { args: []; result: AppSettings }
   updateSettings: { args: [patch: AppSettings]; result: void }
   probeUrl: { args: [url: string]; result: ProbeResult }
   chooseDestinationFolder: { args: [defaultPath: string]; result: string | null }

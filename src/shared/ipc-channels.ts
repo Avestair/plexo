@@ -5,6 +5,7 @@ export const IpcChannels = {
   openNetworkSettings: 'network:open-settings',
   probeUrl: 'download:probe',
   getInitialState: 'app:get-initial-state',
+  getSettings: 'app:get-settings',
   updateSettings: 'app:update-settings',
   chooseDestinationFolder: 'dialog:choose-destination-folder',
   readClipboardText: 'clipboard:read-text',

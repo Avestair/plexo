@@ -60,6 +60,11 @@ function sanitizeSettings(parsed: unknown): AppSettings {
   ) {
     settings.globalMaxSpeedBytesPerSec = parsed.globalMaxSpeedBytesPerSec
   }
+  if (typeof parsed.minimizeToTrayOnClose === 'boolean') {
+    settings.minimizeToTrayOnClose = parsed.minimizeToTrayOnClose
+  }
+  if (typeof parsed.startOnLogin === 'boolean') settings.startOnLogin = parsed.startOnLogin
+  if (typeof parsed.startMinimized === 'boolean') settings.startMinimized = parsed.startMinimized
   return settings
 }
 
@@ -77,6 +82,24 @@ export function saveSettings(patch: unknown): Promise<void> {
   return updateJson(settingsPath(), (current) =>
     sanitizeSettings({ ...sanitizeSettings(current), ...(isRecord(patch) ? patch : {}) })
   )
+}
+
+/**
+ * Mirrors `startOnLogin` into the OS's login items. `openAsHidden` has no equivalent in current
+ * Electron (the option existed on macOS only and was removed — the OS itself now owns whether a
+ * login item launches hidden); `startMinimized` is instead handled entirely in-app, by skipping
+ * the initial `show()` (see main/index.ts), independent of this call.
+ *
+ * `setLoginItemSettings` is a no-op on Linux (and throws in some sandboxed/headless containers
+ * with no desktop session to register with) — caught here so a login-item failure never stops the
+ * app from starting or a settings save from completing.
+ */
+export function applyLoginItemSettings(settings: Pick<AppSettings, 'startOnLogin'>): void {
+  try {
+    app.setLoginItemSettings({ openAtLogin: settings.startOnLogin ?? false })
+  } catch (error) {
+    console.error('[plexo] failed to apply login item settings', error)
+  }
 }
 
 export async function loadThemeSource(): Promise<ThemeSource> {

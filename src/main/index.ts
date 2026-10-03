@@ -2,9 +2,21 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon-dark.png?asset'
-import { registerIpcHandlers } from './ipc/handlers'
-import { loadThemeSource, migrateLegacyNetworkPreferences } from './settings'
+import { registerIpcHandlers, type IpcManagers } from './ipc/handlers'
+import {
+  applyLoginItemSettings,
+  loadSettings,
+  loadThemeSource,
+  migrateLegacyNetworkPreferences
+} from './settings'
 import { testKnobs } from './testKnobs'
+import {
+  installTrayTestHooks,
+  isQuitting,
+  isTrayActive,
+  refreshTrayMenu,
+  setTrayEnabled
+} from './tray'
 import type { DownloadManager } from './download/downloadManager'
 import type { BandwidthManager } from './queue/bandwidthManager'
 import type { QueueManager } from './queue/queueManager'
@@ -27,7 +39,20 @@ let systemActionManager: SystemActionManager | null = null
 let bandwidthManager: BandwidthManager | null = null
 let quitAfterSuspending = false
 
-function createWindow(): void {
+// Non-null assertions below: every caller of this only ever runs after registerIpcHandlers has
+// assigned both (at startup, or from a later 'activate'/tray action).
+function currentTrayDeps(): { getWindow: () => BrowserWindow | null } & Pick<
+  IpcManagers,
+  'downloadManager' | 'queueManager'
+> {
+  return {
+    getWindow: () => mainWindow,
+    downloadManager: downloadManager!,
+    queueManager: queueManager!
+  }
+}
+
+function createWindow(startHidden: boolean): void {
   mainWindow = new BrowserWindow({
     width: 760,
     height: 560,
@@ -54,12 +79,25 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    if (!testKnobs.hideWindow) mainWindow?.show()
+    if (!testKnobs.hideWindow && !startHidden) mainWindow?.show()
   })
 
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // The OS close button: with a tray icon up, hide instead of quitting — the user can always get
+  // the window back from the tray. Without one, this falls through to the platform's normal close
+  // behavior (window-all-closed quits on non-macOS). `isQuitting()` guards the tray's own Quit
+  // item/Cmd+Q, which must never be intercepted into a hide.
+  mainWindow.on('close', (event) => {
+    if (isQuitting() || !isTrayActive()) return
+    event.preventDefault()
+    mainWindow?.hide()
+  })
+
+  mainWindow.on('show', () => refreshTrayMenu(currentTrayDeps()))
+  mainWindow.on('hide', () => refreshTrayMenu(currentTrayDeps()))
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // Only hand http(s) links to the OS shell — an arbitrary scheme (e.g. a custom protocol
@@ -99,11 +137,23 @@ app.whenReady().then(async () => {
     mainWindow?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#ffffff')
   })
 
-  createWindow()
+  // Fixes any drift between the saved settings and the OS's actual login-item/tray state — e.g.
+  // the user edited settings (or upgraded from a version without this feature) while the app
+  // wasn't running. Both are also re-applied live whenever the relevant setting changes (see
+  // handlers.ts's updateSettings).
+  const startupSettings = await loadSettings()
+  applyLoginItemSettings(startupSettings)
+  setTrayEnabled(startupSettings.minimizeToTrayOnClose ?? false, currentTrayDeps())
+  installTrayTestHooks(currentTrayDeps())
+
+  createWindow(startupSettings.startMinimized ?? false)
   if (testKnobs.hideWindow) app.dock?.hide()
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    // A dock/taskbar reactivation always means "show me the window" — startMinimized only applies
+    // to the initial launch.
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(false)
+    else mainWindow?.show()
   })
 })
 

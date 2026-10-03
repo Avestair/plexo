@@ -23,8 +23,9 @@ import { BandwidthManager } from '../queue/bandwidthManager'
 import { QueueManager } from '../queue/queueManager'
 import { ScheduleManager } from '../queue/scheduleManager'
 import { SystemActionManager } from '../queue/systemActionManager'
-import { loadSettings, saveSettings } from '../settings'
+import { applyLoginItemSettings, loadSettings, saveSettings } from '../settings'
 import { testKnobs } from '../testKnobs'
+import { setTrayEnabled } from '../tray'
 import { checkForUpdate, UPDATE_PAGE_URL } from '../updateCheck'
 import type { AppPlatform } from '../../shared/ipc-contract'
 
@@ -109,6 +110,8 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const currentThemeSource = (): ThemeSource =>
     nativeTheme.themeSource === 'dark' ? 'dark' : 'light'
 
+  handle('getSettings', async () => loadSettings())
+
   handle('updateSettings', async (_event, patch) => {
     // The one setting main also applies — before saving, so a failed write still switches the
     // window to the theme the toggle now shows.
@@ -116,6 +119,19 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
       nativeTheme.themeSource = patch.themeSource
     }
     await saveSettings(patch)
+
+    // Platform-integration settings are also side effects, not just persisted values — applied
+    // right away so neither needs a restart. Read back (rather than trusting `patch` alone) since
+    // a patch only ever carries the fields that changed.
+    const settings = await loadSettings()
+    if (patch?.startOnLogin !== undefined) applyLoginItemSettings(settings)
+    if (patch?.minimizeToTrayOnClose !== undefined) {
+      setTrayEnabled(settings.minimizeToTrayOnClose ?? false, {
+        getWindow,
+        downloadManager: manager,
+        queueManager: queues
+      })
+    }
   })
 
   // Answered via sendSync from the preload, which blocks the page until returnValue is set — so a
