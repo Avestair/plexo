@@ -1,4 +1,5 @@
 import type { DownloadState } from '@shared/types'
+import { ChecksumStatusBanner } from '../components/ChecksumStatusBanner'
 import { HeroBand } from '../components/HeroBand'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { ThroughputChart } from '../components/ThroughputChart'
@@ -86,6 +87,16 @@ export function CompleteScreen({
           </div>
         </div>
       </HeroBand>
+
+      {download.checksumStatus && (
+        <div className="mx-5 mt-[18px]">
+          <ChecksumStatusBanner
+            status={download.checksumStatus}
+            expected={download.expectedChecksum}
+            computedHex={download.checksumComputedHex}
+          />
+        </div>
+      )}
 
       <div className="mx-5 my-[18px] grid grid-cols-5 overflow-hidden rounded-[10px] border-[0.5px] border-border bg-card">
         {[

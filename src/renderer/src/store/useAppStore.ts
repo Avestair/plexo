@@ -4,6 +4,7 @@ import type {
   CategoryRule,
   DownloadState,
   DownloadUpdate,
+  HistoryEntry,
   NetworkInterfaceInfo,
   NetworkPreference,
   NetworkPreferences,
@@ -83,6 +84,15 @@ interface AppStore {
   /** Every category rule, pushed whole each time any of them changes (see useCategoryRules). */
   categoryRules: CategoryRule[]
 
+  /** Every download that has ever reached a terminal state, pushed whole each time it changes
+   * (see useHistory) — newest first, capped (see main/storage/historyStorage.ts). */
+  history: HistoryEntry[]
+
+  /** A URL just detected on the clipboard that looks like a download link, offered as a
+   * dismissible banner (see useClipboardDetection and App.tsx) — null when nothing is currently
+   * being offered. */
+  clipboardDetectedUrl: string | null
+
   /** Asks the main process for the network list now; it also pushes every change. */
   loadInterfaces: () => Promise<void>
   receiveInterfaces: (interfaces: NetworkInterfaceInfo[]) => void
@@ -104,6 +114,9 @@ interface AppStore {
   receiveSystemActionConfig: (actions: QueueAction[], log: SystemActionLogEntry[]) => void
   receiveBandwidthUsage: (usage: QueueBandwidthUsage[]) => void
   receiveCategoryRulesUpdate: (rules: CategoryRule[]) => void
+  receiveHistoryUpdate: (entries: HistoryEntry[]) => void
+  receiveClipboardDetected: (url: string) => void
+  dismissClipboardDetected: () => void
 }
 
 // Settings saved by the main process, read once before the first paint (see InitialState).
@@ -143,6 +156,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   pendingSystemActions: [],
   bandwidthUsage: [],
   categoryRules: [],
+  history: [],
+  clipboardDetectedUrl: null,
 
   loadInterfaces: async () => {
     // A re-scan keeps showing the last result rather than flashing back to 'loading'.
@@ -260,5 +275,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   receiveSystemActionConfig: (systemActions, systemActionLog) =>
     set({ systemActions, systemActionLog }),
   receiveBandwidthUsage: (bandwidthUsage) => set({ bandwidthUsage }),
-  receiveCategoryRulesUpdate: (categoryRules) => set({ categoryRules })
+  receiveCategoryRulesUpdate: (categoryRules) => set({ categoryRules }),
+  receiveHistoryUpdate: (history) => set({ history }),
+  receiveClipboardDetected: (clipboardDetectedUrl) => set({ clipboardDetectedUrl }),
+  dismissClipboardDetected: () => set({ clipboardDetectedUrl: null })
 }))

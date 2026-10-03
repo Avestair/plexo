@@ -3,6 +3,8 @@ import type {
   BatchAddResult,
   CategoryRule,
   DownloadUpdate,
+  ExpectedChecksum,
+  HistoryEntry,
   NetworkInterfaceInfo,
   ProbeResult,
   Queue,
@@ -56,7 +58,10 @@ export interface IpcContract {
   checkForUpdate: { args: []; result: UpdateInfo | null }
   createQueue: { args: [name: string, description?: string]; result: Queue }
   deleteQueue: { args: [queueId: string]; result: void }
-  addQueueDownload: { args: [queueId: string, url: string]; result: QueueItem }
+  addQueueDownload: {
+    args: [queueId: string, url: string, expectedChecksum?: ExpectedChecksum]
+    result: QueueItem
+  }
   /** Validates and dedupes `urls` (see QueueManager.addDownloads for the exact policy) and adds
    * every survivor in one persisted write. */
   addQueueDownloads: { args: [queueId: string, urls: string[]]; result: BatchAddResult }
@@ -105,4 +110,21 @@ export interface IpcContract {
   getCategoryRules: { args: []; result: CategoryRule[] }
   removeCategoryRule: { args: [id: string]; result: void }
   reorderCategoryRules: { args: [ids: string[]]; result: void }
+  getHistory: { args: []; result: HistoryEntry[] }
+  /** Case-insensitive substring match against fileName/url; `statusFilter` narrows to one status
+   * when given. An empty query with no statusFilter returns everything, newest first. */
+  searchHistory: {
+    args: [query: string, statusFilter?: HistoryEntry['status']]
+    result: HistoryEntry[]
+  }
+  clearHistory: { args: []; result: void }
+  getClipboardWatchEnabled: { args: []; result: boolean }
+  setClipboardWatchEnabled: { args: [enabled: boolean]; result: void }
+  /** Marks a detected URL as handled (added or dismissed) so it is never offered again this
+   * session — see main/clipboard/clipboardWatcher.ts's doc for why this is a no-op most of the
+   * time (the same dedup already applies automatically) but is still worth calling explicitly. */
+  dismissClipboardDetected: { args: [url: string]; result: void }
+  /** Runs one clipboard check synchronously instead of waiting for the poll interval — the escape
+   * hatch that makes clipboard detection testable, same pattern as schedule:checkNow. */
+  checkClipboardNow: { args: []; result: void }
 }

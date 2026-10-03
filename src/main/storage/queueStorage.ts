@@ -1,7 +1,14 @@
 import { copyFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app } from 'electron'
-import type { Queue, QueueItem, QueueItemStatus, QueueStatus } from '../../shared/types'
+import type {
+  ChecksumStatus,
+  HashAlgorithm,
+  Queue,
+  QueueItem,
+  QueueItemStatus,
+  QueueStatus
+} from '../../shared/types'
 import { readJson, updateJson } from '../jsonFile'
 
 function queuesPath(): string {
@@ -18,6 +25,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const ITEM_STATUSES: QueueItemStatus[] = ['pending', 'downloading', 'paused', 'completed', 'failed']
 const QUEUE_STATUSES: QueueStatus[] = ['idle', 'active', 'paused', 'completed']
+const HASH_ALGORITHMS: HashAlgorithm[] = ['md5', 'sha1', 'sha256']
+const CHECKSUM_STATUSES: ChecksumStatus[] = [
+  'not_checked',
+  'verifying',
+  'match',
+  'mismatch',
+  'error'
+]
 
 /** Trusts nothing past "this is valid JSON" — the file may be hand-edited, from an older
  * version, or truncated by a crash. Every item is checked on its own, so one bad entry only
@@ -45,6 +60,25 @@ function sanitizeItem(parsed: unknown): QueueItem | undefined {
   }
   if (typeof parsed.completedAt === 'number') item.completedAt = parsed.completedAt
   if (typeof parsed.error === 'string') item.error = parsed.error
+  if (typeof parsed.checksumComputedHex === 'string') {
+    item.checksumComputedHex = parsed.checksumComputedHex
+  }
+  if (
+    typeof parsed.checksumStatus === 'string' &&
+    CHECKSUM_STATUSES.includes(parsed.checksumStatus as ChecksumStatus)
+  ) {
+    item.checksumStatus = parsed.checksumStatus as ChecksumStatus
+  }
+  if (isRecord(parsed.expectedChecksum)) {
+    const { algorithm, expectedHex } = parsed.expectedChecksum
+    if (
+      typeof algorithm === 'string' &&
+      HASH_ALGORITHMS.includes(algorithm as HashAlgorithm) &&
+      typeof expectedHex === 'string'
+    ) {
+      item.expectedChecksum = { algorithm: algorithm as HashAlgorithm, expectedHex }
+    }
+  }
   return item
 }
 

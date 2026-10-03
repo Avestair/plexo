@@ -11,6 +11,8 @@ import type {
 import { cn } from 'cn'
 import { ArrowLeft, ArrowDown, ArrowUp, GripVertical, Pause, Play, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { ChecksumField } from '../components/ChecksumField'
+import { ChecksumStatusBanner } from '../components/ChecksumStatusBanner'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -27,6 +29,12 @@ import {
 import { Input } from '../components/ui/input'
 import { useNow } from '../hooks/useNow'
 import { useAppStore } from '../store/useAppStore'
+import {
+  checksumFieldError,
+  emptyChecksumField,
+  resolveChecksumField,
+  type ChecksumFieldState
+} from '../utils/checksumField'
 import { formatBytes, formatCountdown, formatDuration, formatSpeed } from '../utils/format'
 import { nextScheduleAction } from '../utils/schedule'
 
@@ -497,6 +505,14 @@ function QueueItemRow({
 
       {item.error && <div className="font-sans text-[11px] text-destructive">{item.error}</div>}
 
+      {item.checksumStatus && (
+        <ChecksumStatusBanner
+          status={item.checksumStatus}
+          expected={item.expectedChecksum}
+          computedHex={item.checksumComputedHex}
+        />
+      )}
+
       <div className="flex items-center gap-2.5">
         <div className="flex-1 font-mono text-[10.5px] tabular-nums text-muted-foreground">
           {item.size > 0
@@ -612,6 +628,7 @@ export function QueueDetailScreen({
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
+  const [checksumField, setChecksumField] = useState<ChecksumFieldState>(emptyChecksumField)
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
 
   if (!queue) {
@@ -627,12 +644,17 @@ export function QueueDetailScreen({
 
   const handleAdd = async (): Promise<void> => {
     const trimmed = url.trim()
-    if (!trimmed || adding) return
+    if (!trimmed || adding || checksumFieldError(checksumField)) return
     setAdding(true)
     setAddError(null)
     try {
-      await window.plexo.addQueueDownload(queueId, trimmed)
+      await window.plexo.addQueueDownload(
+        queueId,
+        trimmed,
+        resolveChecksumField(checksumField) ?? undefined
+      )
       setUrl('')
+      setChecksumField(emptyChecksumField())
     } catch (error) {
       setAddError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -754,12 +776,19 @@ export function QueueDetailScreen({
             if (event.key === 'Enter') void handleAdd()
           }}
         />
-        <Button type="button" disabled={!url.trim() || adding} onClick={handleAdd}>
+        <Button
+          type="button"
+          disabled={!url.trim() || adding || !!checksumFieldError(checksumField)}
+          onClick={handleAdd}
+        >
           Add
         </Button>
         <Button type="button" variant="outline" onClick={() => setBatchOpen(true)}>
           Add multiple…
         </Button>
+      </div>
+      <div className="px-5 pb-3">
+        <ChecksumField state={checksumField} onChange={setChecksumField} />
       </div>
       {addError && (
         <div className="px-5 pb-3 font-sans text-[11px] text-destructive">{addError}</div>

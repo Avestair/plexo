@@ -17,7 +17,9 @@ import {
   refreshTrayMenu,
   setTrayEnabled
 } from './tray'
+import type { ClipboardWatcher } from './clipboard/clipboardWatcher'
 import type { DownloadManager } from './download/downloadManager'
+import type { HistoryManager } from './history/historyManager'
 import type { BandwidthManager } from './queue/bandwidthManager'
 import type { CategoryRuleManager } from './queue/categoryRules'
 import type { QueueManager } from './queue/queueManager'
@@ -39,6 +41,8 @@ let scheduleManager: ScheduleManager | null = null
 let systemActionManager: SystemActionManager | null = null
 let bandwidthManager: BandwidthManager | null = null
 let categoryRuleManager: CategoryRuleManager | null = null
+let historyManager: HistoryManager | null = null
+let clipboardWatcher: ClipboardWatcher | null = null
 let quitAfterSuspending = false
 
 // Non-null assertions below: every caller of this only ever runs after registerIpcHandlers has
@@ -100,6 +104,9 @@ function createWindow(startHidden: boolean): void {
 
   mainWindow.on('show', () => refreshTrayMenu(currentTrayDeps()))
   mainWindow.on('hide', () => refreshTrayMenu(currentTrayDeps()))
+  // Catches a link copied while Plexo wasn't the focused window, without waiting out a full poll
+  // interval — a no-op when the watcher is disabled (see ClipboardWatcher.checkNow).
+  mainWindow.on('focus', () => void clipboardWatcher?.checkNow())
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // Only hand http(s) links to the OS shell — an arbitrary scheme (e.g. a custom protocol
@@ -138,7 +145,9 @@ app.whenReady().then(async () => {
     scheduleManager,
     systemActionManager,
     bandwidthManager,
-    categoryRuleManager
+    categoryRuleManager,
+    historyManager,
+    clipboardWatcher
   } = registerIpcHandlers(() => mainWindow))
 
   nativeTheme.on('updated', () => {
@@ -177,6 +186,8 @@ app.on('before-quit', (event) => {
   scheduleManager?.dispose()
   systemActionManager?.dispose()
   bandwidthManager?.dispose()
+  historyManager?.dispose()
+  clipboardWatcher?.dispose()
 
   // Guarantee the process exits even if suspending hangs
   const forceQuitTimeout = setTimeout(() => {
@@ -189,7 +200,8 @@ app.on('before-quit', (event) => {
     scheduleManager?.flush(),
     systemActionManager?.flush(),
     bandwidthManager?.flush(),
-    categoryRuleManager?.flush()
+    categoryRuleManager?.flush(),
+    historyManager?.flush()
   ]).finally(() => {
     clearTimeout(forceQuitTimeout)
     quitAfterSuspending = true

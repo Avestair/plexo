@@ -4,6 +4,7 @@ import { IpcChannels } from '../../shared/ipc-channels'
 import type {
   BatchAddResult,
   DownloadUpdate,
+  ExpectedChecksum,
   Queue,
   QueueItem,
   SkippedBatchUrl,
@@ -48,8 +49,8 @@ function isImportableUrl(url: string): boolean {
   }
 }
 
-function buildQueueItem(url: string): QueueItem {
-  return {
+function buildQueueItem(url: string, expectedChecksum?: ExpectedChecksum): QueueItem {
+  const item: QueueItem = {
     id: randomUUID(),
     url,
     fileName: fileNameFromUrl(url),
@@ -61,6 +62,11 @@ function buildQueueItem(url: string): QueueItem {
     timeRemainingSec: 0,
     addedAt: Date.now()
   }
+  if (expectedChecksum) {
+    item.expectedChecksum = expectedChecksum
+    item.checksumStatus = 'not_checked'
+  }
+  return item
 }
 
 /**
@@ -155,13 +161,17 @@ export class QueueManager {
     this.persist()
   }
 
-  async addDownload(queueId: string, url: string): Promise<QueueItem> {
+  async addDownload(
+    queueId: string,
+    url: string,
+    expectedChecksum?: ExpectedChecksum
+  ): Promise<QueueItem> {
     await this.initialization
     const queue = this.find(queueId)
     if (!queue) throw new Error('Queue not found')
     const trimmed = url.trim()
     if (!trimmed) throw new Error('Enter a URL')
-    const item = buildQueueItem(trimmed)
+    const item = buildQueueItem(trimmed, expectedChecksum)
     queue.items.push(item)
     // A queue that had finished has somewhere new to go.
     if (queue.status === 'completed') queue.status = 'idle'
@@ -366,6 +376,16 @@ export class QueueManager {
     return this.queues.find((queue) => queue.id === queueId)
   }
 
+  /** The queue's current name, synchronously — for main/history/historyManager.ts to snapshot
+   * into a HistoryEntry.queueName at the moment a download completes, without an async round
+   * trip through getQueues(). Safe to call any time: by the time a download can be active for a
+   * queue, restore() has already populated `queues` (the whole queue system is single-process and
+   * initialization is awaited before anything can start). Undefined only if the queue has since
+   * been deleted. */
+  getQueueName(queueId: string): string | undefined {
+    return this.find(queueId)?.name
+  }
+
   private setActive(active: ActiveDownload | null): void {
     this.active = active
     for (const listener of this.activeChangeListeners) {
@@ -460,7 +480,8 @@ export class QueueManager {
             supportsRanges: probe.supportsRanges,
             interfaceIds: available.map((iface) => iface.id),
             etag: probe.etag,
-            lastModified: probe.lastModified
+            lastModified: probe.lastModified,
+            expectedChecksum: item.expectedChecksum
           }
           const downloadId = await this.downloads.start(request)
           this.setActive({ queueId: queue.id, itemId: item.id, downloadId })
@@ -523,6 +544,9 @@ export class QueueManager {
             Math.round((state.totalBytes - state.bytesDownloaded) / state.speedBytesPerSec)
           )
         : 0
+    if (state.checksumStatus !== undefined) item.checksumStatus = state.checksumStatus
+    if (state.checksumComputedHex !== undefined)
+      item.checksumComputedHex = state.checksumComputedHex
 
     let done = false
     switch (state.status) {
@@ -542,7 +566,12 @@ export class QueueManager {
         item.speedBytesPerSec = 0
         item.timeRemainingSec = 0
         item.fileName = state.fileName
-        done = true
+        // A checksum is still being computed: wait for the follow-up update with the settled
+        // result (match/mismatch/error) before freeing the download slot. Otherwise
+        // DownloadManager.remove() below would drop the runtime out from under
+        // DownloadManager.verifyChecksum, which is still running against the same file, and its
+        // eventual result would never reach this item (see pushUpdate's removed-runtime guard).
+        done = state.checksumStatus !== 'verifying'
         break
       case 'error':
         item.status = 'failed'

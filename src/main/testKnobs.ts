@@ -36,7 +36,11 @@ export const testKnobs = {
   systemActionStub: env['PLEXO_E2E_SYSTEM_ACTION_STUB'] === '1',
   /** When the stub above is active, makes it reject with this message instead of resolving — for
    * exercising the 'failed' outcome without a real command ever running. */
-  systemActionFailureMessage: env['PLEXO_E2E_SYSTEM_ACTION_FAIL']
+  systemActionFailureMessage: env['PLEXO_E2E_SYSTEM_ACTION_FAIL'],
+  /** How many entries main/storage/historyStorage.ts keeps before evicting the oldest — 1000
+   * outside tests (see historyStorage.ts's doc). Overridable so a cap-eviction test doesn't need
+   * to actually complete a thousand downloads. */
+  historyCapEntries: positiveNumber('PLEXO_E2E_HISTORY_CAP', 1000)
 }
 
 /** `PLEXO_E2E_STREAMS=2` fixes how many streams each network runs and turns the automatic

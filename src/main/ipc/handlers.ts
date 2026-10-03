@@ -13,9 +13,11 @@ import {
 import { IpcChannels } from '../../shared/ipc-channels'
 import type { IpcContract } from '../../shared/ipc-contract'
 import type { InitialState, ThemeSource } from '../../shared/types'
+import { ClipboardWatcher } from '../clipboard/clipboardWatcher'
 import { DownloadManager } from '../download/downloadManager'
 import { getDefaultDownloadsDir, getHomeDir } from '../download/paths'
 import { probeUrl } from '../download/probe'
+import { HistoryManager } from '../history/historyManager'
 import { deviceBindingSupported } from '../network/deviceBinding'
 import { measureLatencies } from '../network/latency'
 import { NetworkMonitor } from '../network/interfaces'
@@ -70,6 +72,8 @@ export interface IpcManagers {
   systemActionManager: SystemActionManager
   bandwidthManager: BandwidthManager
   categoryRuleManager: CategoryRuleManager
+  historyManager: HistoryManager
+  clipboardWatcher: ClipboardWatcher
 }
 
 function appPlatform(): AppPlatform {
@@ -93,6 +97,8 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   const bandwidth = new BandwidthManager(getWindow, queues, manager)
   queues.attachBandwidthGate(bandwidth)
   const categoryRules = new CategoryRuleManager(getWindow)
+  const history = new HistoryManager(getWindow, manager, queues)
+  const clipboardWatcher = new ClipboardWatcher(getWindow)
   // Waking from sleep, the networks may have changed without a poll in between to see it.
   powerMonitor.on('resume', () => {
     manager.systemResumed()
@@ -257,7 +263,9 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('createQueue', async (_event, name, description) => queues.createQueue(name, description))
   handle('deleteQueue', async (_event, queueId) => queues.deleteQueue(queueId))
   handle('updateQueueName', async (_event, queueId, name) => queues.updateQueueName(queueId, name))
-  handle('addQueueDownload', async (_event, queueId, url) => queues.addDownload(queueId, url))
+  handle('addQueueDownload', async (_event, queueId, url, expectedChecksum) =>
+    queues.addDownload(queueId, url, expectedChecksum)
+  )
   handle('addQueueDownloads', async (_event, queueId, urls) => queues.addDownloads(queueId, urls))
   handle('removeQueueDownload', async (_event, queueId, itemId) =>
     queues.removeDownload(queueId, itemId)
@@ -312,12 +320,27 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): IpcM
   handle('removeCategoryRule', async (_event, id) => categoryRules.removeRule(id))
   handle('reorderCategoryRules', async (_event, ids) => categoryRules.reorderRules(ids))
 
+  handle('getHistory', async () => history.getAll())
+  handle('searchHistory', async (_event, query, statusFilter) =>
+    history.search(query, statusFilter)
+  )
+  handle('clearHistory', async () => history.clear())
+
+  handle('getClipboardWatchEnabled', async () => clipboardWatcher.getEnabled())
+  handle('setClipboardWatchEnabled', async (_event, enabled) =>
+    clipboardWatcher.setEnabled(enabled)
+  )
+  handle('dismissClipboardDetected', async (_event, url) => clipboardWatcher.dismiss(url))
+  handle('checkClipboardNow', async () => clipboardWatcher.checkNow())
+
   return {
     downloadManager: manager,
     queueManager: queues,
     scheduleManager: schedules,
     systemActionManager: systemActions,
     bandwidthManager: bandwidth,
-    categoryRuleManager: categoryRules
+    categoryRuleManager: categoryRules,
+    historyManager: history,
+    clipboardWatcher
   }
 }

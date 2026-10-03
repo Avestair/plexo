@@ -5,6 +5,8 @@ import type {
   AppSettings,
   CategoryRule,
   DownloadUpdate,
+  ExpectedChecksum,
+  HistoryEntry,
   InitialState,
   NetworkInterfaceInfo,
   Queue,
@@ -56,7 +58,8 @@ const plexoApi = {
   createQueue: (name: string, description?: string) => invoke('createQueue', name, description),
   deleteQueue: (queueId: string) => invoke('deleteQueue', queueId),
   updateQueueName: (queueId: string, name: string) => invoke('updateQueueName', queueId, name),
-  addQueueDownload: (queueId: string, url: string) => invoke('addQueueDownload', queueId, url),
+  addQueueDownload: (queueId: string, url: string, expectedChecksum?: ExpectedChecksum) =>
+    invoke('addQueueDownload', queueId, url, expectedChecksum),
   addQueueDownloads: (queueId: string, urls: string[]) =>
     invoke('addQueueDownloads', queueId, urls),
   removeQueueDownload: (queueId: string, itemId: string) =>
@@ -105,6 +108,16 @@ const plexoApi = {
   removeCategoryRule: (id: string) => invoke('removeCategoryRule', id),
   reorderCategoryRules: (ids: string[]) => invoke('reorderCategoryRules', ids),
 
+  getHistory: () => invoke('getHistory'),
+  searchHistory: (query: string, statusFilter?: HistoryEntry['status']) =>
+    invoke('searchHistory', query, statusFilter),
+  clearHistory: () => invoke('clearHistory'),
+
+  getClipboardWatchEnabled: () => invoke('getClipboardWatchEnabled'),
+  setClipboardWatchEnabled: (enabled: boolean) => invoke('setClipboardWatchEnabled', enabled),
+  dismissClipboardDetected: (url: string) => invoke('dismissClipboardDetected', url),
+  checkClipboardNow: () => invoke('checkClipboardNow'),
+
   onQueuesUpdated: (callback: (queues: Queue[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, queues: Queue[]): void => callback(queues)
     ipcRenderer.on(IpcChannels.queueUpdated, listener)
@@ -148,6 +161,18 @@ const plexoApi = {
     const listener = (_event: IpcRendererEvent, rules: CategoryRule[]): void => callback(rules)
     ipcRenderer.on(IpcChannels.categoryRulesUpdated, listener)
     return () => ipcRenderer.removeListener(IpcChannels.categoryRulesUpdated, listener)
+  },
+
+  onHistoryUpdated: (callback: (entries: HistoryEntry[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, entries: HistoryEntry[]): void => callback(entries)
+    ipcRenderer.on(IpcChannels.historyUpdated, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.historyUpdated, listener)
+  },
+
+  onClipboardLinkDetected: (callback: (url: string) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, url: string): void => callback(url)
+    ipcRenderer.on(IpcChannels.clipboardLinkDetected, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.clipboardLinkDetected, listener)
   }
 }
 

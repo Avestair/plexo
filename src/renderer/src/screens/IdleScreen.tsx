@@ -3,6 +3,7 @@ import type { ProbeResult } from '@shared/types'
 import { cn } from 'cn'
 import { AlertTriangle, ClipboardPaste, Info } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ChecksumField } from '../components/ChecksumField'
 import { NetworkCard } from '../components/NetworkCard'
 import { ScreenFooter } from '../components/ScreenFooter'
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert'
@@ -10,6 +11,12 @@ import { Button } from '../components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { useLatencyPolling } from '../hooks/useNetworks'
 import { useAppStore } from '../store/useAppStore'
+import {
+  checksumFieldError,
+  emptyChecksumField,
+  resolveChecksumField,
+  type ChecksumFieldState
+} from '../utils/checksumField'
 import { describeError, formatBytes, toDisplayPath } from '../utils/format'
 
 type StreamsChoice = 'auto' | number
@@ -87,6 +94,7 @@ export function IdleScreen(): React.JSX.Element {
   // shows: a user who's never touched rules sees zero behavior change.
   const [suggestionDismissed, setSuggestionDismissed] = useState(false)
   const [addedToQueueName, setAddedToQueueName] = useState<string | null>(null)
+  const [checksumField, setChecksumField] = useState<ChecksumFieldState>(emptyChecksumField)
 
   const probeRequestId = useRef(0)
 
@@ -101,6 +109,7 @@ export function IdleScreen(): React.JSX.Element {
       // Resetting derived probe state when its trigger (the URL) is cleared.
       setProbe({ status: 'idle' })
       setFileNameOverride(null)
+      setChecksumField(emptyChecksumField())
       return
     }
 
@@ -159,7 +168,8 @@ export function IdleScreen(): React.JSX.Element {
     probe.status === 'ready' &&
     selectedInterfaceIds.length > 0 &&
     Boolean(destinationDir) &&
-    !starting
+    !starting &&
+    !checksumFieldError(checksumField)
   const footerParts = [
     `${selectedInterfaceIds.length} ${selectedInterfaceIds.length === 1 ? 'network' : 'networks'} selected`
   ]
@@ -240,8 +250,10 @@ export function IdleScreen(): React.JSX.Element {
         interfaceIds: selectedInterfaceIds,
         etag: probe.result.etag,
         lastModified: probe.result.lastModified,
-        streamsPerNetwork: streamsChoice === 'auto' ? undefined : streamsChoice
+        streamsPerNetwork: streamsChoice === 'auto' ? undefined : streamsChoice,
+        expectedChecksum: resolveChecksumField(checksumField) ?? undefined
       })
+      setChecksumField(emptyChecksumField())
     } catch (error) {
       setStartError(describeError(error))
     } finally {
@@ -386,6 +398,8 @@ export function IdleScreen(): React.JSX.Element {
             Browse…
           </Button>
         </div>
+
+        <ChecksumField state={checksumField} onChange={setChecksumField} />
 
         <div
           className={cn(

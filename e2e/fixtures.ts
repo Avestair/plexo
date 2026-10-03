@@ -14,7 +14,12 @@ import {
 } from '@playwright/test'
 import type { IpcContract } from '../src/shared/ipc-contract'
 import { applyDownloadUpdate } from '../src/shared/downloadUpdate'
-import type { DownloadState, DownloadStatus, DownloadUpdate } from '../src/shared/types'
+import type {
+  DownloadState,
+  DownloadStatus,
+  DownloadUpdate,
+  ExpectedChecksum
+} from '../src/shared/types'
 import { Origin, sha256, type OriginOptions } from './origin'
 
 export { expect }
@@ -54,6 +59,7 @@ interface StartOptions {
   streamsPerNetwork?: number
   fileName?: string
   destinationDir?: string
+  expectedChecksum?: ExpectedChecksum
 }
 
 interface Tracked {
@@ -211,7 +217,8 @@ export class PlexoApp {
       interfaceIds: multiChunk ? networks : networks.slice(0, 1),
       etag: probe.etag,
       lastModified: probe.lastModified,
-      streamsPerNetwork: options.streamsPerNetwork
+      streamsPerNetwork: options.streamsPerNetwork,
+      expectedChecksum: options.expectedChecksum
     })
     this.tracked.set(id, { expectedSha, destBefore, destinationDir })
     return id

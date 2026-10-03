@@ -65,5 +65,14 @@ export const IpcChannels = {
   getCategoryRules: 'categoryRule:getAll',
   removeCategoryRule: 'categoryRule:remove',
   reorderCategoryRules: 'categoryRule:reorder',
-  categoryRulesUpdated: 'categoryRule:onUpdate'
+  categoryRulesUpdated: 'categoryRule:onUpdate',
+  getHistory: 'history:getAll',
+  searchHistory: 'history:search',
+  clearHistory: 'history:clear',
+  historyUpdated: 'history:onUpdate',
+  getClipboardWatchEnabled: 'clipboard:getWatchEnabled',
+  setClipboardWatchEnabled: 'clipboard:setWatchEnabled',
+  dismissClipboardDetected: 'clipboard:dismissDetected',
+  checkClipboardNow: 'clipboard:checkNow',
+  clipboardLinkDetected: 'clipboard:linkDetected'
 } as const

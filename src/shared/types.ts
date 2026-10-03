@@ -141,6 +141,14 @@ export interface DownloadState {
   completedAt?: number
   /** The update this state is as of (see DownloadUpdate). */
   seq?: number
+  /** Carried over from StartDownloadRequest.expectedChecksum, if one was supplied — kept on the
+   * state (not just the request) so a restored/resumed download still has it when it completes. */
+  expectedChecksum?: ExpectedChecksum
+  /** Only set when expectedChecksum is — see ChecksumStatus's doc. */
+  checksumStatus?: ChecksumStatus
+  /** The file's actual hash, once computed (match or mismatch alike) — shown alongside
+   * expectedChecksum.expectedHex so a mismatch can be inspected, not just flagged. */
+  checksumComputedHex?: string
 }
 
 /** What the main process sends as a download changes: everything but its blocks, and only the
@@ -203,6 +211,12 @@ export interface AppSettings {
    * the tray (if minimizeToTrayOnClose is also on) or otherwise reveals it. Independent of
    * startOnLogin: a user may want either on its own, or both together. Off by default. */
   startMinimized?: boolean
+  /** Whether main/clipboard/clipboardWatcher.ts polls the clipboard for download-looking URLs.
+   * Off by default: continuously reading the clipboard is mildly privacy-sensitive (it would see
+   * passwords and other text copied for unrelated reasons, even if only a URL shape is ever acted
+   * on), and a user upgrading from an earlier version of Plexo never asked for that — opt-in
+   * keeps their experience unchanged until they explicitly turn it on in Settings. */
+  clipboardWatchEnabled?: boolean
 }
 
 /** Everything the renderer needs for its first paint, read synchronously by the preload so no
@@ -236,6 +250,13 @@ export interface QueueItem {
   addedAt: number
   completedAt?: number
   error?: string
+  /** Optional, attached when the item was added — see ExpectedChecksum's doc. Not offered on the
+   * batch-import path (QueueManager.addDownloads): a per-line checksum there would need a second
+   * column in the paste/file format, which isn't worth the complexity for what's meant to be a
+   * quick bulk-add path. */
+  expectedChecksum?: ExpectedChecksum
+  checksumStatus?: ChecksumStatus
+  checksumComputedHex?: string
 }
 
 /** One line from a batch import that wasn't added, and why — see QueueManager.addDownloads.
@@ -436,4 +457,60 @@ export interface StartDownloadRequest {
   lastModified: string | null
   /** Streams per network the user picked; left out, the count is decided automatically. */
   streamsPerNetwork?: number
+  /** If set, the file is hashed once the download completes and compared against this — see
+   * DownloadState.checksumStatus for the result. Optional: most downloads carry none. */
+  expectedChecksum?: ExpectedChecksum
+}
+
+// --- checksum verification (Phase 7) ------------------------------------------------------------
+
+export type HashAlgorithm = 'md5' | 'sha1' | 'sha256'
+
+/** A hash the user supplied to verify a download against, once it completes. `expectedHex` is
+ * always lowercase (see shared/checksum.ts's normalizeChecksumHex) — comparisons elsewhere can
+ * assume that rather than re-normalizing. */
+export interface ExpectedChecksum {
+  algorithm: HashAlgorithm
+  expectedHex: string
+}
+
+/**
+ * Where a download's checksum verification stands:
+ * - not_checked: an ExpectedChecksum is attached, but the download hasn't completed yet.
+ * - verifying: the download just completed and the file is being hashed.
+ * - match / mismatch: hashing finished and compared against ExpectedChecksum.expectedHex.
+ * - error: the file couldn't be hashed (e.g. removed right after completing).
+ * Absent entirely (rather than any of these) means no checksum was ever requested for this
+ * download — distinct from 'not_checked', which means one was requested but hasn't run yet.
+ */
+export type ChecksumStatus = 'not_checked' | 'verifying' | 'match' | 'mismatch' | 'error'
+
+// --- download history (Phase 7) -----------------------------------------------------------------
+
+/**
+ * One download that reached a terminal state (completed, failed, or cancelled) — ad-hoc or
+ * queue-driven. Recorded once per download by main/history/historyManager.ts off the same
+ * DownloadManager.onUpdate stream QueueManager and BandwidthManager already watch (see that
+ * file's doc), and kept in a bounded, persisted log independent of the Queue/DownloadState it
+ * came from — the same pattern as SystemActionLogEntry.
+ */
+export interface HistoryEntry {
+  id: string
+  url: string
+  fileName: string
+  destinationPath: string
+  /** Final size — totalBytes if known, otherwise however much was downloaded. */
+  size: number
+  status: 'completed' | 'failed' | 'cancelled'
+  startedAt: number
+  finishedAt: number
+  source: 'adhoc' | 'queue'
+  /** Set together, only when source is 'queue'. queueName is a snapshot — it doesn't track a
+   * later rename, the same way SystemActionLogEntry.queueName doesn't. */
+  queueId?: string
+  queueName?: string
+  checksum?: ExpectedChecksum
+  checksumStatus?: ChecksumStatus
+  checksumComputedHex?: string
+  error?: string
 }

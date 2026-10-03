@@ -18,6 +18,7 @@ import type {
 import { testKnobs, testStreamsPerNetwork } from '../testKnobs'
 import { RateLimiter } from './bandwidth'
 import { advanceBlock, retractBlock } from './blockProgress'
+import { hashFile } from './checksum'
 import { ConcurrencyController, type Action, type Snapshot } from './concurrency'
 import { downloadChunk, fetchRange, HttpStatusError, RemoteChangedError } from './chunkDownloader'
 import { DownloadFile } from './downloadFile'
@@ -743,7 +744,9 @@ export class DownloadManager {
       blocks,
       totalBlocks: blocks.length,
       blockSizeBytes: plan.blockSizeBytes,
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      expectedChecksum: requestPayload.expectedChecksum,
+      checksumStatus: requestPayload.expectedChecksum ? 'not_checked' : undefined
     }
 
     const runtime = newRuntime(state, requestPayload, file, blocks)
@@ -1100,9 +1103,31 @@ export class DownloadManager {
       runtime.state.status = 'completed'
       runtime.state.completedAt = Date.now()
       runtime.state.bytesDownloaded = runtime.state.totalBytes || runtime.state.bytesDownloaded
+      if (runtime.requestPayload.expectedChecksum) {
+        // Pushed and persisted before hashing starts (which can take a while on a large file) so
+        // the UI shows "Verifying…" rather than leaving the last 'downloading' update on screen.
+        runtime.state.checksumStatus = 'verifying'
+        await this.persistNow(runtime)
+        this.pushUpdate(runtime)
+        await this.verifyChecksum(runtime)
+      }
       await this.persistNow(runtime)
       await runtime.file.discard().catch(() => {})
       this.notify('Download Complete', `${runtime.state.fileName} has finished downloading.`)
+      if (runtime.state.checksumStatus === 'mismatch') {
+        // Loud on purpose: the transfer itself succeeded (every byte the server promised arrived),
+        // but what arrived doesn't match what the user said to expect — worth a second, distinct
+        // notification rather than folding it into the quiet 'Download Complete' one above, and
+        // surfaced just as loudly in the renderer (see CompleteScreen's checksum banner and
+        // QueueDetailScreen's item row) rather than only logged. The download is deliberately
+        // still left as 'completed', not re-routed to 'error': the file is exactly what the
+        // server sent, nothing about the transfer itself failed, and the bytes are kept rather
+        // than discarded so the user can inspect or keep the mismatched file if they choose.
+        this.notify(
+          'Checksum Mismatch',
+          `${runtime.state.fileName} downloaded, but its ${runtime.state.expectedChecksum?.algorithm.toUpperCase()} checksum does not match what you expected.`
+        )
+      }
     } catch (error) {
       runtime.state.status = 'error'
       runtime.state.error = error instanceof Error ? error.message : String(error)
@@ -1111,6 +1136,24 @@ export class DownloadManager {
     runtime.publishing = false
 
     this.pushUpdate(runtime)
+  }
+
+  /** Hashes the published file and compares it against requestPayload.expectedChecksum, setting
+   * state.checksumStatus/checksumComputedHex to the result. Never throws — a file that can't be
+   * hashed (removed, permissions) is reported as checksumStatus 'error' rather than failing the
+   * download, which has otherwise completed successfully. */
+  private async verifyChecksum(runtime: DownloadRuntime): Promise<void> {
+    const expected = runtime.requestPayload.expectedChecksum
+    if (!expected) return
+    try {
+      const computed = await hashFile(runtime.state.destinationPath, expected.algorithm)
+      runtime.state.checksumComputedHex = computed
+      runtime.state.checksumStatus =
+        computed === expected.expectedHex.toLowerCase() ? 'match' : 'mismatch'
+    } catch (error) {
+      runtime.state.checksumStatus = 'error'
+      debug('checksum verification failed', error)
+    }
   }
 
   /** Stops the current run: every stream, and the run's own wait. */

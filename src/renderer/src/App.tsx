@@ -1,13 +1,17 @@
 import type { DownloadState } from '@shared/types'
 import { useEffect, useState } from 'react'
 import { TitleBar, type TitleBarStatus, type TitleBarView } from './components/TitleBar'
+import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
+import { Button } from './components/ui/button'
 import { NetworkBindingDialog } from './components/NetworkBindingDialog'
 import { SystemActionConfirmDialog } from './components/SystemActionConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useBandwidth } from './hooks/useBandwidth'
 import { useCategoryRules } from './hooks/useCategoryRules'
+import { useClipboardDetection } from './hooks/useClipboardDetection'
 import { useDownloadEvents } from './hooks/useDownloadEvents'
+import { useHistory } from './hooks/useHistory'
 import { useNetworkEvents } from './hooks/useNetworks'
 import { useQueues } from './hooks/useQueues'
 import { useSchedules } from './hooks/useSchedules'
@@ -15,6 +19,7 @@ import { useSystemActions } from './hooks/useSystemActions'
 import { CompleteScreen } from './screens/CompleteScreen'
 import { DownloadingScreen } from './screens/DownloadingScreen'
 import { ErrorScreen } from './screens/ErrorScreen'
+import { HistoryScreen } from './screens/HistoryScreen'
 import { IdleScreen } from './screens/IdleScreen'
 import { NoConnectionsScreen } from './screens/NoConnectionsScreen'
 import { QueueDetailScreen } from './screens/QueueDetailScreen'
@@ -81,6 +86,8 @@ function App(): React.JSX.Element {
   useSystemActions()
   useBandwidth()
   useCategoryRules()
+  useHistory()
+  useClipboardDetection()
 
   const [view, setView] = useState<TitleBarView>('downloads')
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null)
@@ -90,6 +97,9 @@ function App(): React.JSX.Element {
   const currentDownload = useAppStore((store) => store.currentDownload)
   const clearCurrentDownload = useAppStore((store) => store.clearCurrentDownload)
   const checkForUpdate = useAppStore((store) => store.checkForUpdate)
+  const setDraftUrl = useAppStore((store) => store.setDraftUrl)
+  const clipboardDetectedUrl = useAppStore((store) => store.clipboardDetectedUrl)
+  const dismissClipboardDetected = useAppStore((store) => store.dismissClipboardDetected)
 
   useEffect(() => {
     checkForUpdate()
@@ -111,6 +121,20 @@ function App(): React.JSX.Element {
 
   const noConnections = interfacesStatus === 'ready' && interfaces.length === 0
 
+  const handleAcceptClipboardUrl = (): void => {
+    if (!clipboardDetectedUrl) return
+    setDraftUrl(clipboardDetectedUrl)
+    void window.plexo.dismissClipboardDetected(clipboardDetectedUrl)
+    dismissClipboardDetected()
+    setView('downloads')
+  }
+
+  const handleDismissClipboardUrl = (): void => {
+    if (!clipboardDetectedUrl) return
+    void window.plexo.dismissClipboardDetected(clipboardDetectedUrl)
+    dismissClipboardDetected()
+  }
+
   let screen: React.JSX.Element
   let titleBarStatus: TitleBarStatus = { kind: 'none' }
 
@@ -122,6 +146,8 @@ function App(): React.JSX.Element {
     )
   } else if (view === 'schedule') {
     screen = <ScheduleScreen />
+  } else if (view === 'history') {
+    screen = <HistoryScreen />
   } else if (view === 'settings') {
     screen = <SettingsScreen />
   } else if (currentDownload) {
@@ -138,8 +164,26 @@ function App(): React.JSX.Element {
 
   return (
     <TooltipProvider>
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
         <TitleBar status={titleBarStatus} view={view} onChangeView={setView} />
+        {clipboardDetectedUrl && (
+          <div className="absolute inset-x-0 top-14 z-20 mx-auto w-full max-w-md px-4">
+            <Alert className="shadow-lg">
+              <AlertTitle>Download this?</AlertTitle>
+              <AlertDescription className="truncate font-mono text-[11px]">
+                {clipboardDetectedUrl}
+              </AlertDescription>
+              <div className="mt-2 flex gap-2">
+                <Button type="button" size="xs" onClick={handleAcceptClipboardUrl}>
+                  Add to downloads
+                </Button>
+                <Button type="button" size="xs" variant="ghost" onClick={handleDismissClipboardUrl}>
+                  Dismiss
+                </Button>
+              </div>
+            </Alert>
+          </div>
+        )}
         <div className="min-h-0 flex-1">{screen}</div>
         <UpdateDialog />
         <NetworkBindingDialog />

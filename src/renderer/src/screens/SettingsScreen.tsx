@@ -266,6 +266,9 @@ export function SettingsScreen(): React.JSX.Element {
   const [startMinimized, setStartMinimized] = useState(false)
   const [platformLoaded, setPlatformLoaded] = useState(false)
 
+  const [clipboardWatchEnabled, setClipboardWatchEnabled] = useState(false)
+  const [clipboardLoaded, setClipboardLoaded] = useState(false)
+
   useEffect(() => {
     let disposed = false
     void window.plexo.getGlobalBandwidthLimit().then((bytesPerSec) => {
@@ -279,6 +282,11 @@ export function SettingsScreen(): React.JSX.Element {
       setStartOnLogin(settings.startOnLogin ?? false)
       setStartMinimized(settings.startMinimized ?? false)
       setPlatformLoaded(true)
+    })
+    void window.plexo.getClipboardWatchEnabled().then((enabled) => {
+      if (disposed) return
+      setClipboardWatchEnabled(enabled)
+      setClipboardLoaded(true)
     })
     return () => {
       disposed = true
@@ -372,6 +380,28 @@ export function SettingsScreen(): React.JSX.Element {
               {minimizeToTrayOnClose
                 ? '(to the tray)'
                 : '(stays hidden — enable the tray above to reopen it)'}
+            </span>
+          </label>
+        </div>
+
+        <div className="mt-3 flex flex-col gap-2.5 rounded-[10px] border-[0.5px] border-border bg-card p-[13px_14px]">
+          <div className="font-sans text-[13px] font-semibold">Clipboard</div>
+          <div className="max-w-80 font-sans text-[11.5px] text-muted-foreground">
+            When on, Plexo watches the clipboard for links that look like downloads and offers to
+            add them — off by default, since this means continuously reading whatever you copy.
+          </div>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={clipboardWatchEnabled}
+              disabled={!clipboardLoaded}
+              onCheckedChange={(checked) => {
+                const value = checked === true
+                setClipboardWatchEnabled(value)
+                void window.plexo.setClipboardWatchEnabled(value)
+              }}
+            />
+            <span className="font-sans text-[11.5px] text-muted-foreground">
+              Watch the clipboard for download links
             </span>
           </label>
         </div>

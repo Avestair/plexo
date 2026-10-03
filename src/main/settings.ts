@@ -65,6 +65,9 @@ function sanitizeSettings(parsed: unknown): AppSettings {
   }
   if (typeof parsed.startOnLogin === 'boolean') settings.startOnLogin = parsed.startOnLogin
   if (typeof parsed.startMinimized === 'boolean') settings.startMinimized = parsed.startMinimized
+  if (typeof parsed.clipboardWatchEnabled === 'boolean') {
+    settings.clipboardWatchEnabled = parsed.clipboardWatchEnabled
+  }
   return settings
 }
 
